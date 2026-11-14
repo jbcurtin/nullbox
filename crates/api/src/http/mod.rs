@@ -1,6 +1,7 @@
 //! Routes and the middleware stack.
 
 mod admin;
+mod auth;
 mod customer;
 pub mod extract;
 mod utility;
@@ -21,7 +22,10 @@ pub fn router(state: AppState) -> Router {
         .route("/tickets", post(customer::create_ticket).get(worker::list_tickets))
         .route("/public/tickets/{id}", get(customer::get_ticket))
         .route("/public/tickets/{id}/messages", post(customer::reply))
-        // workers
+        // worker login
+        .route("/auth/login", post(auth::login))
+        .route("/auth/logout", post(auth::logout))
+        // workers (every handler takes `Actor`, which needs a session)
         .route("/tickets/{id}", get(worker::get_ticket).patch(worker::update_ticket))
         .route("/tickets/{id}/messages", post(worker::add_message))
         .route("/tickets/{id}/yeet", post(worker::yeet_ticket))

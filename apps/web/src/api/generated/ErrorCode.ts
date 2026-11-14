@@ -3,4 +3,4 @@
 /**
  * Stable error codes. The frontend maps each one to copy; never rename a variant.
  */
-export type ErrorCode = "not_found" | "missing_ticket_token" | "missing_actor" | "forbidden" | "validation_failed" | "invalid_status_transition" | "ticket_closed" | "service_unavailable" | "internal" | "im_a_teapot";
+export type ErrorCode = "not_found" | "missing_ticket_token" | "missing_actor" | "forbidden" | "validation_failed" | "invalid_status_transition" | "ticket_closed" | "service_unavailable" | "internal" | "im_a_teapot" | "unauthenticated" | "invalid_credentials";

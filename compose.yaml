@@ -8,6 +8,9 @@ services:
       PUBLIC_WEB_URL: https://${DOMAIN:?set DOMAIN in .env}
       CORS_ALLOWED_ORIGINS: https://${DOMAIN}
       ADMIN_TOKEN: ${ADMIN_TOKEN:?set ADMIN_TOKEN in .env}
+      # The worker inbox login. Unset, nobody can log in to /inbox.
+      WORKER_USERNAME: ${WORKER_USERNAME:-}
+      WORKER_PASSWORD: ${WORKER_PASSWORD:-}
     volumes:
       - nullbox-data:/data
 

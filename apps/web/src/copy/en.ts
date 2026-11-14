@@ -106,7 +106,7 @@ const en = {
     noMatches: "Nothing matches. Suspicious.",
     you: "You are",
     actorPlaceholder: "Your name",
-    actorHint: "Not a login. Anyone can claim to be anyone. (Login is one of your upgrades.)",
+    actorHint: "The name shown on your replies and notes.",
     back: "Back to inbox",
     reply: "Reply to customer",
     internalNote: "Internal note",
@@ -120,6 +120,17 @@ const en = {
     assigneePlaceholder: "Name or empty",
     assign: "Assign",
     assignToMe: "Take it",
+  },
+
+  login: {
+    title: "Workers only",
+    intro: "Log in to see the inbox. Customers: you're looking for “Report a problem”.",
+    username: "Username",
+    password: "Password",
+    submit: "Log in",
+    submitting: "Checking…",
+    logout: "Log out",
+    signedInAs: (username: string) => `Logged in as ${username}`,
   },
 
   beast: {
@@ -161,6 +172,8 @@ const en = {
     service_unavailable: "The server is taking a nap. Try again in a moment.",
     internal: "Something broke on our side. It works on our machine, though.",
     im_a_teapot: "I'm a teapot. Short and stout.",
+    unauthenticated: "Your session ended. Please log in again.",
+    invalid_credentials: "Wrong username or password.",
     network_error: "Can't reach the server. Is it plugged in?",
   } satisfies Record<ErrorCode | "network_error", string>,
 

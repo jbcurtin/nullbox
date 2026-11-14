@@ -102,8 +102,7 @@ const ja = {
     noMatches: "該当なし。怪しい。",
     you: "あなたは",
     actorPlaceholder: "お名前",
-    actorHint:
-      "ログインではありません。誰でも誰にでもなれます。（ログインはアップグレードのひとつです）",
+    actorHint: "返信やメモに表示される名前です。",
     back: "受信箱に戻る",
     reply: "お客様に返信",
     internalNote: "社内メモ",
@@ -117,6 +116,17 @@ const ja = {
     assigneePlaceholder: "名前（空欄で解除）",
     assign: "割り当て",
     assignToMe: "引き受ける",
+  },
+
+  login: {
+    title: "対応者専用",
+    intro: "受信箱を見るにはログインしてください。お客様は「問題を報告」へどうぞ。",
+    username: "ユーザー名",
+    password: "パスワード",
+    submit: "ログイン",
+    submitting: "確認中…",
+    logout: "ログアウト",
+    signedInAs: (username: string) => `${username} としてログイン中`,
   },
 
   beast: {
@@ -158,6 +168,8 @@ const ja = {
     service_unavailable: "サーバーが昼寝中です。少ししてからもう一度お試しください。",
     internal: "こちら側で何かが壊れました。手元の環境では動くんですけどね。",
     im_a_teapot: "私はティーポットです。",
+    unauthenticated: "セッションが終了しました。もう一度ログインしてください。",
+    invalid_credentials: "ユーザー名またはパスワードが違います。",
     network_error: "サーバーに接続できません。コンセント、抜けてませんか？",
   },
 

@@ -252,3 +252,7 @@
   background: var(--color-accent);
   color: #fff;
 }
+
+.loginForm {
+  max-width: 24rem;
+}

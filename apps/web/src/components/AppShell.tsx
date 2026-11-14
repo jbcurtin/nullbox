@@ -1,6 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import { getActorName, setActorName, subscribeActor } from "../api/actor";
+import { api } from "../api/client";
+import { clearSession, getSession, subscribeSession } from "../api/session";
 import { dictionaries, type Locale, useCopy, useLocale } from "../copy/CopyProvider";
 import { useKonami } from "../hooks/useKonami";
 import styles from "./AppShell.module.css";
@@ -11,6 +14,7 @@ const LANGUAGE_NAMES: Record<Locale, string> = { en: "English", ja: "日本語" 
 export function AppShell() {
   const copy = useCopy();
   const { pathname } = useLocation();
+  const session = useSyncExternalStore(subscribeSession, getSession);
   const [enterprise, setEnterprise] = useState(false);
   useKonami(useCallback(() => setEnterprise(true), []));
 
@@ -33,7 +37,12 @@ export function AppShell() {
           <NavLink to="/inbox">{copy.app.nav.inbox}</NavLink>
         </nav>
         <div className={styles.tools}>
-          {pathname.startsWith("/inbox") && <ActorPicker />}
+          {pathname.startsWith("/inbox") && session && (
+            <>
+              <ActorPicker />
+              <LogoutButton username={session.username} />
+            </>
+          )}
           <LanguageSwitcher />
         </div>
       </header>
@@ -66,7 +75,27 @@ function LanguageSwitcher() {
   );
 }
 
-/** Not a login: the worker just tells us who they are (see api/actor.ts). */
+function LogoutButton({ username }: { username: string }) {
+  const copy = useCopy();
+  const queryClient = useQueryClient();
+  return (
+    <button
+      type="button"
+      title={copy.login.signedInAs(username)}
+      onClick={() => {
+        // Forget locally even if the server can't be reached.
+        api.logout().catch(() => undefined);
+        clearSession();
+        queryClient.removeQueries({ queryKey: ["tickets"] });
+        queryClient.removeQueries({ queryKey: ["backlog"] });
+      }}
+    >
+      {copy.login.logout}
+    </button>
+  );
+}
+
+/** The display name on replies. The login itself is in api/session.ts. */
 function ActorPicker() {
   const copy = useCopy();
   const name = useSyncExternalStore(subscribeActor, getActorName);

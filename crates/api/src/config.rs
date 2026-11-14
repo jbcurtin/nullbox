@@ -1,5 +1,7 @@
 use std::net::SocketAddr;
 
+use crate::auth::Credentials;
+
 /// Every setting, read from the environment (plus `.env` in dev). See `.env.example`.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -13,6 +15,8 @@ pub struct Config {
     pub public_web_url: String,
     /// `ADMIN_TOKEN`: unlocks `GET /api/admin/export`, the CEO's spreadsheet.
     pub admin_token: String,
+    /// `WORKER_USERNAME` + `WORKER_PASSWORD`: the login for the worker inbox. Unset, nobody can log in.
+    pub worker_credentials: Option<Credentials>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -30,6 +34,16 @@ impl Config {
             .parse()
             .map_err(|e: std::net::AddrParseError| ConfigError { name: "BIND_ADDR", reason: e.to_string() })?;
 
+        let worker_credentials = match (std::env::var("WORKER_USERNAME"), std::env::var("WORKER_PASSWORD")) {
+            (Ok(username), Ok(password)) if !username.trim().is_empty() && !password.is_empty() => {
+                if password.chars().count() < 12 {
+                    return Err(ConfigError { name: "WORKER_PASSWORD", reason: "use at least 12 characters".into() });
+                }
+                Some(Credentials { username: username.trim().to_owned(), password })
+            }
+            _ => None,
+        };
+
         Ok(Self {
             bind_addr,
             database_url: var("DATABASE_URL", "sqlite://nullbox.db"),
@@ -40,6 +54,7 @@ impl Config {
                 .collect(),
             public_web_url: var("PUBLIC_WEB_URL", "http://localhost:5173").trim_end_matches('/').to_owned(),
             admin_token: admin_token()?,
+            worker_credentials,
         })
     }
 }
