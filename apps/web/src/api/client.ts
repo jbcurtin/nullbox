@@ -6,7 +6,7 @@
  * - Worker requests carry `Authorization: Bearer <token>` from `authHeaders()`.
  *   A 401 `unauthenticated` clears the session, which sends the worker back to login.
  */
-import { getActorName } from "./actor";
+import type { AuthOptions } from "./generated/AuthOptions";
 import type { BacklogStats } from "./generated/BacklogStats";
 import type { CheckoutResponse } from "./generated/CheckoutResponse";
 import type { CreateTicketRequest } from "./generated/CreateTicketRequest";
@@ -16,6 +16,8 @@ import type { ErrorCode } from "./generated/ErrorCode";
 import type { LoginRequest } from "./generated/LoginRequest";
 import type { LoginResponse } from "./generated/LoginResponse";
 import type { Message } from "./generated/Message";
+import type { SignupRequest } from "./generated/SignupRequest";
+import type { SignupResponse } from "./generated/SignupResponse";
 import type { Ticket } from "./generated/Ticket";
 import type { TicketStatus } from "./generated/TicketStatus";
 import type { TicketThread } from "./generated/TicketThread";
@@ -40,15 +42,10 @@ export class ApiError extends Error {
   }
 }
 
-/** The login session, plus the display name shown on replies. */
+/** The login session. Replies are signed with the account's username on the server. */
 function authHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
   const session = getSession();
-  if (session) headers.Authorization = `Bearer ${session.token}`;
-  // Percent-encoded so non-ASCII names (e.g. 山田) survive HTTP headers.
-  const name = getActorName().trim();
-  if (name) headers["X-Actor-Name"] = encodeURIComponent(name);
-  return headers;
+  return session ? { Authorization: `Bearer ${session.token}` } : {};
 }
 
 function ticketTokenHeaders(token: string): Record<string, string> {
@@ -96,7 +93,9 @@ export const api = {
       headers: ticketTokenHeaders(token),
     }),
 
-  // worker login
+  // worker accounts: sign up, then log in once
+  authOptions: () => request<AuthOptions>("GET", "/auth/options"),
+  signup: (body: SignupRequest) => request<SignupResponse>("POST", "/auth/signup", { body }),
   login: (body: LoginRequest) => request<LoginResponse>("POST", "/auth/login", { body }),
   logout: () => request<void>("POST", "/auth/logout", { headers: authHeaders() }),
   // shop

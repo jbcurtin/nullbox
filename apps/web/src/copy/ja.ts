@@ -117,9 +117,6 @@ const ja = {
     search: "件名で検索",
     searchPlaceholder: "件名で絞り込み…",
     noMatches: "該当なし。怪しい。",
-    you: "あなたは",
-    actorPlaceholder: "お名前",
-    actorHint: "返信やメモに表示される名前です。",
     back: "受信箱に戻る",
     reply: "お客様に返信",
     internalNote: "社内メモ",
@@ -138,11 +135,27 @@ const ja = {
   login: {
     title: "対応者専用",
     intro: "受信箱を見るにはログインしてください。お客様は「問題を報告」へどうぞ。",
+    oneTimeNotice:
+      "各アカウントでログインできるのは1回だけです。ログアウトすると使えなくなるので、次は新しいアカウントを作成してください。",
+    tabLogin: "ログイン",
+    tabSignup: "アカウント作成",
     username: "ユーザー名",
+    usernameHint: "3〜32 文字の英数字・文字、「_」「.」「-」。返信にはこの名前が表示されます。",
     password: "パスワード",
+    passwordHint: (min: number) =>
+      `${min} 文字以上。過去のデータ漏えいで流出したパスワードは使えません。`,
+    signupCode: "登録コード",
+    signupCodeHint: "チームリーダーに聞いてください。",
     submit: "ログイン",
     submitting: "確認中…",
+    signupSubmit: "アカウントを作成",
+    signupSubmitting: "作成中…",
+    created: (username: string) =>
+      `アカウント「${username}」を作成しました。ログインしてください。`,
     logout: "ログアウト",
+    logoutHint: "セッションを終了します。このアカウントでは二度とログインできません。",
+    logoutConfirm:
+      "ログアウトしますか？このアカウントでは二度とログインできません。次回は新しいアカウントが必要です。",
     signedInAs: (username: string) => `${username} としてログイン中`,
   },
 
@@ -177,7 +190,7 @@ const ja = {
   errors: {
     not_found: "隅々まで探しました。ソファの下まで。ありません。",
     missing_ticket_token: "このページには秘密リンクが必要です。",
-    missing_actor: "まず名前を選んでください（右上）。",
+    missing_actor: "まずログインしてください。",
     forbidden: "ここを通すわけにはいかない。",
     validation_failed: "入力内容に問題があるようです。各項目をご確認ください。",
     invalid_status_transition: "そのステータス変更はできません。時は一方向にしか流れません。",
@@ -187,6 +200,13 @@ const ja = {
     im_a_teapot: "私はティーポットです。",
     unauthenticated: "セッションが終了しました。もう一度ログインしてください。",
     invalid_credentials: "ユーザー名またはパスワードが違います。",
+    account_already_used:
+      "このアカウントは使用済みです。ログインは1アカウントにつき1回だけです。新しいアカウントを作成してください。",
+    username_taken: "そのユーザー名は使われています。別の名前をどうぞ。",
+    password_too_short: "パスワードが短すぎます。",
+    password_leaked:
+      "そのパスワードは過去のデータ漏えいで流出しています。別のものを選んでください。",
+    invalid_signup_code: "登録コードが違います。",
     network_error: "サーバーに接続できません。コンセント、抜けてませんか？",
   },
 

@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
-import { getActorName, setActorName, subscribeActor } from "../api/actor";
 import { api } from "../api/client";
 import { clearSession, getSession, subscribeSession } from "../api/session";
 import { dictionaries, type Locale, useCopy, useLocale } from "../copy/CopyProvider";
@@ -39,10 +38,10 @@ export function AppShell() {
         </nav>
         <div className={styles.tools}>
           {pathname.startsWith("/inbox") && session && (
-            <>
-              <ActorPicker />
-              <LogoutButton username={session.username} />
-            </>
+            <span className={styles.actor}>
+              <span>{copy.login.signedInAs(session.username)}</span>
+              <LogoutButton />
+            </span>
           )}
           <LanguageSwitcher />
         </div>
@@ -76,14 +75,16 @@ function LanguageSwitcher() {
   );
 }
 
-function LogoutButton({ username }: { username: string }) {
+/** Each account logs in once, so logging out spends it: ask first. */
+function LogoutButton() {
   const copy = useCopy();
   const queryClient = useQueryClient();
   return (
     <button
       type="button"
-      title={copy.login.signedInAs(username)}
+      title={copy.login.logoutHint}
       onClick={() => {
+        if (!window.confirm(copy.login.logoutConfirm)) return;
         // Forget locally even if the server can't be reached.
         api.logout().catch(() => undefined);
         clearSession();
@@ -93,22 +94,5 @@ function LogoutButton({ username }: { username: string }) {
     >
       {copy.login.logout}
     </button>
-  );
-}
-
-/** The display name on replies. The login itself is in api/session.ts. */
-function ActorPicker() {
-  const copy = useCopy();
-  const name = useSyncExternalStore(subscribeActor, getActorName);
-  return (
-    <label className={styles.actor} title={copy.worker.actorHint}>
-      <span>{copy.worker.you}</span>
-      <input
-        value={name}
-        placeholder={copy.worker.actorPlaceholder}
-        maxLength={100}
-        onChange={(event) => setActorName(event.target.value)}
-      />
-    </label>
   );
 }

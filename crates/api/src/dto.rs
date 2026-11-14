@@ -86,6 +86,31 @@ pub struct BacklogStats {
 
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
+pub struct SignupRequest {
+    pub username: String,
+    pub password: String,
+    /// Needed only when the server sets `WORKER_SIGNUP_CODE`.
+    #[serde(default)]
+    #[ts(optional)]
+    pub signup_code: Option<String>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct SignupResponse {
+    pub username: String,
+}
+
+/// What the sign-up form needs to know before it's shown.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct AuthOptions {
+    pub signup_code_required: bool,
+    pub min_password_length: u32,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,

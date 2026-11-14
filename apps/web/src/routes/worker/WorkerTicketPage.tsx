@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { getActorName } from "../../api/actor";
 import type { Severity } from "../../api/generated/Severity";
 import type { TicketStatus } from "../../api/generated/TicketStatus";
 import { useAddMessage, useUpdateTicket, useWorkerTicket, useYeetTicket } from "../../api/queries";
+import { getSession } from "../../api/session";
 import { CustomerName, SeverityBadge, StatusBadge, TicketNumber } from "../../components/Badges";
 import { Composer } from "../../components/Composer";
 import { ErrorMessage, Loading } from "../../components/Feedback";
@@ -163,7 +163,7 @@ function AssigneeField({
       </label>
       <div className={styles.row}>
         <button type="submit">{copy.worker.assign}</button>
-        <button type="button" onClick={() => onAssign(getActorName())}>
+        <button type="button" onClick={() => onAssign(getSession()?.username ?? "")}>
           {copy.worker.assignToMe}
         </button>
       </div>

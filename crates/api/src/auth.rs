@@ -1,16 +1,21 @@
-//! Worker login: one username and password from the config, and in-memory sessions.
+//! Worker accounts and sessions.
 //!
-//! `POST /api/auth/login` checks the credentials and returns a random bearer token.
-//! Only the token's SHA-256 is kept, next to the username and an expiry. Sessions live
-//! in memory, so a restart logs everyone out. For real accounts, swap the credential
-//! check for a users table with password hashes and keep the rest.
+//! - Sign-up creates an account with its own username and password (Argon2id). Short
+//!   passwords and passwords known from data breaches are refused. If `WORKER_SIGNUP_CODE`
+//!   is set, sign-up also needs that code.
+//! - **Each account can log in exactly once.** That login returns a bearer token; after
+//!   logging out (or once the session expires) the account is spent and the worker has
+//!   to create a new one.
+//! - Sessions live in memory (only token hashes), so restarting the API ends them too.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 
+use crate::passwords::{self, LeakCheck};
+use crate::repo::WorkerRepository;
 use crate::{ApiError, token};
 
 /// How long a login lasts.
@@ -22,50 +27,90 @@ pub struct Session {
     pub expires_at: DateTime<Utc>,
 }
 
-/// The configured worker credentials. `None` when unset: then nobody can log in.
-#[derive(Debug, Clone)]
-pub struct Credentials {
-    pub username: String,
-    pub password: String,
+pub struct Accounts {
+    repo: Arc<dyn WorkerRepository>,
+    leaks: Arc<dyn LeakCheck>,
+    signup_code: Option<String>,
+    sessions: Sessions,
 }
 
-#[derive(Default)]
-pub struct Sessions {
-    by_token_hash: Mutex<HashMap<String, Session>>,
-}
+impl Accounts {
+    pub fn new(repo: Arc<dyn WorkerRepository>, leaks: Arc<dyn LeakCheck>, signup_code: Option<String>) -> Self {
+        Self { repo, leaks, signup_code, sessions: Sessions::default() }
+    }
 
-impl Sessions {
-    /// Checks the credentials and opens a session. Returns the token (shown once) and the session.
-    pub fn login(
-        &self,
-        configured: Option<&Credentials>,
-        username: &str,
-        password: &str,
-    ) -> Result<(String, Session), ApiError> {
-        let Some(configured) = configured else {
-            tracing::warn!("worker login attempted, but WORKER_USERNAME/WORKER_PASSWORD are not set");
+    /// Creates an account. Returns the username as stored.
+    pub async fn sign_up(&self, username: &str, password: &str, code: Option<&str>) -> Result<String, ApiError> {
+        if let Some(expected) = &self.signup_code
+            && !constant_time_eq(code.unwrap_or_default(), expected)
+        {
+            return Err(ApiError::InvalidSignupCode);
+        }
+        let username = passwords::validate_username(username)?;
+        passwords::validate_password_length(password)?;
+        if self.leaks.is_leaked(password).await {
+            return Err(ApiError::PasswordLeaked);
+        }
+        let hash = passwords::hash(password.to_owned()).await?;
+        if !self.repo.create(&username, &hash, Utc::now()).await? {
+            return Err(ApiError::UsernameTaken);
+        }
+        tracing::info!(target: "audit", %username, "worker account created");
+        Ok(username)
+    }
+
+    /// The account's one login. Returns the token (shown once) and the session.
+    pub async fn log_in(&self, username: &str, password: &str) -> Result<(String, Session), ApiError> {
+        let account = self.repo.find(username.trim()).await?;
+        // Unknown usernames still pay for a hash check, so timing doesn't reveal which exist.
+        let phc = account.as_ref().map_or_else(passwords::dummy_hash, |a| a.password_hash.clone());
+        let password_ok = passwords::verify(password.to_owned(), phc).await;
+        let Some(account) = account.filter(|_| password_ok) else {
+            tracing::warn!(target: "audit", username = %username.trim(), "worker login failed");
             return Err(ApiError::InvalidCredentials);
         };
-        // Compare both fields every time, in constant time, so timing reveals neither.
-        let user_ok = constant_time_eq(username, &configured.username);
-        let pass_ok = constant_time_eq(password, &configured.password);
-        if !(user_ok & pass_ok) {
-            tracing::warn!(target: "audit", "worker login failed");
-            return Err(ApiError::InvalidCredentials);
+        // Only after the right password: say the account is spent, and spend it atomically.
+        if account.logged_in_at.is_some() || !self.repo.claim_login(account.id, Utc::now()).await? {
+            tracing::warn!(target: "audit", username = %account.username, "worker login refused: account already used");
+            return Err(ApiError::AccountAlreadyUsed);
         }
-
-        let token = token::generate().map_err(|e| ApiError::WorksOnMyMachine(e.to_string()))?;
-        let session = Session { username: configured.username.clone(), expires_at: Utc::now() + SESSION_TTL };
-        let mut sessions = self.lock();
-        let now = Utc::now();
-        sessions.retain(|_, s| s.expires_at > now);
-        sessions.insert(token::hash(&token), session.clone());
+        let (token, session) = self.sessions.open(account.username)?;
         tracing::info!(target: "audit", username = %session.username, "worker logged in");
         Ok((token, session))
     }
 
-    /// The live session for a bearer token, if any.
-    pub fn get(&self, token: &str) -> Option<Session> {
+    pub fn session(&self, token: &str) -> Option<Session> {
+        self.sessions.get(token)
+    }
+
+    pub fn log_out(&self, token: &str) {
+        if let Some(session) = self.sessions.remove(token) {
+            tracing::info!(target: "audit", username = %session.username, "worker logged out; account spent");
+        }
+    }
+
+    pub fn signup_code_required(&self) -> bool {
+        self.signup_code.is_some()
+    }
+}
+
+#[derive(Default)]
+struct Sessions {
+    by_token_hash: Mutex<HashMap<String, Session>>,
+}
+
+impl Sessions {
+    fn open(&self, username: String) -> Result<(String, Session), ApiError> {
+        let token = token::generate().map_err(|e| ApiError::WorksOnMyMachine(e.to_string()))?;
+        let session = Session { username, expires_at: Utc::now() + SESSION_TTL };
+        let mut sessions = self.lock();
+        let now = Utc::now();
+        sessions.retain(|_, s| s.expires_at > now);
+        sessions.insert(token::hash(&token), session.clone());
+        Ok((token, session))
+    }
+
+    fn get(&self, token: &str) -> Option<Session> {
         let hash = token::hash(token);
         let mut sessions = self.lock();
         match sessions.get(&hash) {
@@ -78,8 +123,8 @@ impl Sessions {
         }
     }
 
-    pub fn logout(&self, token: &str) {
-        self.lock().remove(&token::hash(token));
+    fn remove(&self, token: &str) -> Option<Session> {
+        self.lock().remove(&token::hash(token))
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Session>> {
@@ -98,33 +143,24 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn creds() -> Credentials {
-        Credentials { username: "agent".into(), password: "correct horse".into() }
-    }
-
     #[test]
-    fn login_issues_a_token_that_resolves_to_the_session() {
+    fn sessions_open_resolve_expire_and_close() {
         let sessions = Sessions::default();
-        let (token, session) = sessions.login(Some(&creds()), "agent", "correct horse").unwrap();
+        let (token, session) = sessions.open("kenji".into()).unwrap();
         assert_eq!(sessions.get(&token), Some(session));
-        sessions.logout(&token);
-        assert_eq!(sessions.get(&token), None);
-    }
-
-    #[test]
-    fn wrong_or_missing_credentials_are_refused() {
-        let sessions = Sessions::default();
-        assert!(matches!(sessions.login(Some(&creds()), "agent", "wrong"), Err(ApiError::InvalidCredentials)));
-        assert!(matches!(sessions.login(Some(&creds()), "Agent", "correct horse"), Err(ApiError::InvalidCredentials)));
-        assert!(matches!(sessions.login(None, "agent", "correct horse"), Err(ApiError::InvalidCredentials)));
         assert_eq!(sessions.get("made-up"), None);
-    }
-
-    #[test]
-    fn expired_sessions_are_gone() {
-        let sessions = Sessions::default();
-        let (token, _) = sessions.login(Some(&creds()), "agent", "correct horse").unwrap();
         sessions.lock().values_mut().for_each(|s| s.expires_at = Utc::now() - Duration::seconds(1));
         assert_eq!(sessions.get(&token), None);
+
+        let (token, _) = sessions.open("aiko".into()).unwrap();
+        assert!(sessions.remove(&token).is_some());
+        assert_eq!(sessions.get(&token), None);
+    }
+
+    #[test]
+    fn constant_time_eq_compares() {
+        assert!(constant_time_eq("code", "code"));
+        assert!(!constant_time_eq("code", "Code"));
+        assert!(!constant_time_eq("", "code"));
     }
 }

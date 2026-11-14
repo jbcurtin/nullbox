@@ -2,6 +2,7 @@
 //! Postgres implementation, multi-tenancy or backups don't touch them.
 
 mod sqlite;
+mod workers;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -9,6 +10,7 @@ use nullbox_domain::{AnonIdentity, Message, Severity, Ticket, TicketStatus};
 use uuid::Uuid;
 
 pub use sqlite::SqliteTicketRepository;
+pub use workers::{SqliteWorkerRepository, WorkerAccount, WorkerRepository};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RepoError {

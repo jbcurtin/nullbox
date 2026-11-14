@@ -24,6 +24,8 @@ pub fn router(state: AppState) -> Router {
         .route("/public/tickets/{id}", get(customer::get_ticket))
         .route("/public/tickets/{id}/messages", post(customer::reply))
         // worker login
+        .route("/auth/options", get(auth::options))
+        .route("/auth/signup", post(auth::signup))
         .route("/auth/login", post(auth::login))
         .route("/auth/logout", post(auth::logout))
         // workers (every handler takes `Actor`, which needs a session)

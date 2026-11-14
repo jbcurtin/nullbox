@@ -124,9 +124,6 @@ const en = {
     search: "Search subjects",
     searchPlaceholder: "Filter by subject…",
     noMatches: "Nothing matches. Suspicious.",
-    you: "You are",
-    actorPlaceholder: "Your name",
-    actorHint: "The name shown on your replies and notes.",
     back: "Back to inbox",
     reply: "Reply to customer",
     internalNote: "Internal note",
@@ -145,11 +142,26 @@ const en = {
   login: {
     title: "Workers only",
     intro: "Log in to see the inbox. Customers: you're looking for “Report a problem”.",
+    oneTimeNotice:
+      "Each account can log in once. After you log out, it's spent: create a new account to come back.",
+    tabLogin: "Log in",
+    tabSignup: "Create account",
     username: "Username",
+    usernameHint: "3–32 letters, digits, “_”, “.” or “-”. Your replies are signed with it.",
     password: "Password",
+    passwordHint: (min: number) =>
+      `At least ${min} characters. Passwords from known data breaches are refused.`,
+    signupCode: "Sign-up code",
+    signupCodeHint: "Ask your team lead.",
     submit: "Log in",
     submitting: "Checking…",
+    signupSubmit: "Create account",
+    signupSubmitting: "Creating…",
+    created: (username: string) => `Account “${username}” created. Log in to use it.`,
     logout: "Log out",
+    logoutHint: "Ends your session. This account can't log in again.",
+    logoutConfirm:
+      "Log out? This account can't log in again; next time you'll need to create a new one.",
     signedInAs: (username: string) => `Logged in as ${username}`,
   },
 
@@ -184,7 +196,7 @@ const en = {
   errors: {
     not_found: "We looked everywhere. Even under the couch. It's not there.",
     missing_ticket_token: "This page needs your secret link.",
-    missing_actor: "Pick a name first (top right).",
+    missing_actor: "Please log in first.",
     forbidden: "You shall not pass.",
     validation_failed: "Something in the form doesn't look right. Please check the fields.",
     invalid_status_transition: "That status change isn't allowed. Time only flows one way.",
@@ -194,6 +206,12 @@ const en = {
     im_a_teapot: "I'm a teapot. Short and stout.",
     unauthenticated: "Your session ended. Please log in again.",
     invalid_credentials: "Wrong username or password.",
+    account_already_used:
+      "This account has already been used. Each account logs in once: please create a new one.",
+    username_taken: "That username is taken. Try another.",
+    password_too_short: "That password is too short.",
+    password_leaked: "That password appears in a known data breach. Please pick a different one.",
+    invalid_signup_code: "That sign-up code is wrong.",
     network_error: "Can't reach the server. Is it plugged in?",
   } satisfies Record<ErrorCode | "network_error", string>,
 

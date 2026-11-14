@@ -5,12 +5,20 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use nullbox_api::auth::Credentials;
+use std::sync::Arc;
+
+use nullbox_api::passwords::OfflineLeakCheck;
 use nullbox_api::{AppState, Config, db, http};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
 async fn app() -> Router {
+    app_with_signup_code(None).await
+}
+
+/// The router on a fresh in-memory database. The leaked-password check is the offline
+/// list only, so tests never touch the network.
+async fn app_with_signup_code(signup_code: Option<&str>) -> Router {
     let pool = db::connect_in_memory().await.expect("in-memory db");
     let config = Config {
         bind_addr: "127.0.0.1:0".parse().unwrap(),
@@ -18,12 +26,12 @@ async fn app() -> Router {
         cors_allowed_origins: vec!["http://localhost:5173".into()],
         public_web_url: "http://localhost:5173".into(),
         admin_token: "test-admin-token".into(),
-        worker_credentials: Some(Credentials { username: "agent".into(), password: PASSWORD.into() }),
+        worker_signup_code: signup_code.map(Into::into),
         mcp_token: Some(MCP_TOKEN.into()),
         stripe_api_key: None,
         stripe_api_base: "http://127.0.0.1:1".into(),
     };
-    http::router(AppState::new(pool, config))
+    http::router(AppState::with_leak_check(pool, config, Arc::new(OfflineLeakCheck)))
 }
 
 /// Send a request; returns status and JSON body (`Null` if empty).
@@ -51,13 +59,22 @@ async fn send(
     (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
 }
 
-const PASSWORD: &str = "correct horse battery staple";
-const DISPLAY_NAME: (&str, &str) = ("x-actor-name", "%E5%B1%B1%E7%94%B0"); // 山田, percent-encoded
+const PASSWORD: &str = "violet otter gravel 42";
 
-/// Logs in as the worker; returns the `Authorization` header value.
-async fn login(app: &Router) -> String {
+async fn sign_up(app: &Router, username: &str) {
     let (status, body) =
-        send(app, "POST", "/api/auth/login", &[], Some(json!({ "username": "agent", "password": PASSWORD }))).await;
+        send(app, "POST", "/api/auth/signup", &[], Some(json!({ "username": username, "password": PASSWORD }))).await;
+    assert_eq!((status, &body["username"]), (StatusCode::CREATED, &json!(username)));
+}
+
+async fn try_login(app: &Router, username: &str, password: &str) -> (StatusCode, Value) {
+    send(app, "POST", "/api/auth/login", &[], Some(json!({ "username": username, "password": password }))).await
+}
+
+/// Creates a fresh account and uses its one login; returns the `Authorization` header value.
+async fn login(app: &Router, username: &str) -> String {
+    sign_up(app, username).await;
+    let (status, body) = try_login(app, username, PASSWORD).await;
     assert_eq!(status, StatusCode::OK);
     format!("Bearer {}", body["token"].as_str().unwrap())
 }
@@ -66,8 +83,9 @@ const MCP_TOKEN: &str = "test-mcp-token";
 #[tokio::test]
 async fn customer_and_worker_round_trip() {
     let app = app().await;
-    let auth = login(&app).await;
-    let worker = [("authorization", auth.as_str()), DISPLAY_NAME];
+    let auth = login(&app, "山田太郎").await;
+    // The old display-name header is ignored: replies carry the account's username.
+    let worker = [("authorization", auth.as_str()), ("x-actor-name", "someone-else")];
 
     // Anonymous customer creates a ticket.
     let (status, created) = send(
@@ -133,16 +151,16 @@ async fn customer_and_worker_round_trip() {
             .any(|m| m["system_event"] == json!({ "kind": "status_changed", "from": "resolved", "to": "open" }))
     );
 
-    // The worker view does include the note, written by 山田.
+    // The worker view does include the note, written by the 山田太郎 account.
     let (_, thread) = send(&app, "GET", &format!("/api/tickets/{id}"), &worker, None).await;
     let note = thread["messages"].as_array().unwrap().iter().find(|m| m["internal"] == true).unwrap();
-    assert_eq!(note["author_name"], "山田");
+    assert_eq!(note["author_name"], "山田太郎");
 }
 
 #[tokio::test]
 async fn errors_share_one_shape() {
     let app = app().await;
-    let auth = login(&app).await;
+    let auth = login(&app, "kenji").await;
 
     let (status, error) = send(&app, "GET", "/api/tickets", &[], None).await;
     assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("unauthenticated")));
@@ -178,8 +196,9 @@ async fn admin_export_needs_the_admin_token() {
 #[tokio::test]
 async fn worker_endpoints_need_a_login() {
     let app = app().await;
+    let name_only = ("x-actor-name", "%E5%B1%B1%E7%94%B0"); // 山田, percent-encoded
 
-    // No session, a made-up token, or a name header alone: all refused, on every worker route.
+    // No session, a name header alone, or a made-up token: all refused, on every worker route.
     let id = "01a1d8b8-eddc-7267-aed2-2057c3b4f227";
     for (method, uri) in [
         ("GET", "/api/tickets".to_owned()),
@@ -189,7 +208,7 @@ async fn worker_endpoints_need_a_login() {
         ("POST", format!("/api/tickets/{id}/yeet")),
         ("GET", "/api/stats/backlog".to_owned()),
     ] {
-        for headers in [vec![], vec![DISPLAY_NAME], vec![("authorization", "Bearer made-up"), DISPLAY_NAME]] {
+        for headers in [vec![], vec![name_only], vec![("authorization", "Bearer made-up"), name_only]] {
             let (status, error) = send(&app, method, &uri, &headers, Some(json!({}))).await;
             assert_eq!(
                 (status, &error["code"]),
@@ -198,46 +217,90 @@ async fn worker_endpoints_need_a_login() {
             );
         }
     }
+}
 
-    // Wrong credentials.
-    for (username, password) in [("agent", "wrong"), ("nobody", PASSWORD), ("", "")] {
-        let (status, error) =
-            send(&app, "POST", "/api/auth/login", &[], Some(json!({ "username": username, "password": password })))
-                .await;
+#[tokio::test]
+async fn each_account_logs_in_once() {
+    let app = app().await;
+    sign_up(&app, "Aiko").await;
+
+    // Wrong password or unknown user: the same answer.
+    for (username, password) in [("Aiko", "wrong password"), ("nobody", PASSWORD), ("", "")] {
+        let (status, error) = try_login(&app, username, password).await;
         assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("invalid_credentials")));
     }
 
-    // Logged in: works, and without a display name the username is used.
-    let auth = login(&app).await;
+    // The one login (usernames are case-insensitive), and a reply under the account's name.
+    let (status, body) = try_login(&app, "aiko", PASSWORD).await;
+    assert_eq!((status, &body["username"]), (StatusCode::OK, &json!("Aiko")));
+    let auth = format!("Bearer {}", body["token"].as_str().unwrap());
     let session = [("authorization", auth.as_str())];
-    let (status, _) = send(&app, "GET", "/api/tickets", &session, None).await;
-    assert_eq!(status, StatusCode::OK);
+    let ticket = json!({ "subject": "Help", "body": "x", "severity": "p3" });
+    let (_, created) = send(&app, "POST", "/api/tickets", &[], Some(ticket)).await;
+    let id = created["ticket"]["id"].as_str().unwrap();
+    let (status, message) =
+        send(&app, "POST", &format!("/api/tickets/{id}/messages"), &session, Some(json!({ "body": "On it" }))).await;
+    assert_eq!((status, &message["author_name"]), (StatusCode::CREATED, &json!("Aiko")));
 
-    // Logging out ends the session.
+    // A second login is refused, even while the first session is still open...
+    let (status, error) = try_login(&app, "Aiko", PASSWORD).await;
+    assert_eq!((status, &error["code"]), (StatusCode::FORBIDDEN, &json!("account_already_used")));
+
+    // ...and after logging out, the old token is dead and the account stays spent.
     let (status, _) = send(&app, "POST", "/api/auth/logout", &session, None).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     let (status, error) = send(&app, "GET", "/api/tickets", &session, None).await;
     assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("unauthenticated")));
+    let (status, error) = try_login(&app, "Aiko", PASSWORD).await;
+    assert_eq!((status, &error["code"]), (StatusCode::FORBIDDEN, &json!("account_already_used")));
+
+    // A wrong password on a spent account says "wrong password", not "spent".
+    let (_, error) = try_login(&app, "Aiko", "wrong password").await;
+    assert_eq!(error["code"], "invalid_credentials");
+
+    // A new account works.
+    login(&app, "Aiko2").await;
 }
 
 #[tokio::test]
-async fn nobody_can_log_in_without_configured_credentials() {
-    let pool = db::connect_in_memory().await.expect("in-memory db");
-    let config = Config {
-        bind_addr: "127.0.0.1:0".parse().unwrap(),
-        database_url: "sqlite::memory:".into(),
-        cors_allowed_origins: vec![],
-        public_web_url: "http://localhost:5173".into(),
-        admin_token: "test-admin-token".into(),
-        worker_credentials: None,
-        mcp_token: None,
-        stripe_api_key: None,
-        stripe_api_base: "http://127.0.0.1:1".into(),
+async fn sign_up_rules() {
+    let app = app().await;
+    let signup = |username: &str, password: &str| {
+        let body = json!({ "username": username, "password": password });
+        let app = app.clone();
+        async move { send(&app, "POST", "/api/auth/signup", &[], Some(body)).await }
     };
-    let app = http::router(AppState::new(pool, config));
-    let (status, error) =
-        send(&app, "POST", "/api/auth/login", &[], Some(json!({ "username": "", "password": "" }))).await;
-    assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("invalid_credentials")));
+
+    let (status, error) = signup("kenji", "short").await;
+    assert_eq!((status, &error["code"]), (StatusCode::UNPROCESSABLE_ENTITY, &json!("password_too_short")));
+    let (status, error) = signup("kenji", "Password1234").await;
+    assert_eq!((status, &error["code"]), (StatusCode::UNPROCESSABLE_ENTITY, &json!("password_leaked")));
+    let (status, error) = signup("no spaces allowed", PASSWORD).await;
+    assert_eq!((status, &error["code"]), (StatusCode::UNPROCESSABLE_ENTITY, &json!("validation_failed")));
+
+    let (status, _) = signup("kenji", PASSWORD).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, error) = signup("KENJI", "another good password").await;
+    assert_eq!((status, &error["code"]), (StatusCode::CONFLICT, &json!("username_taken")));
+
+    let (_, options) = send(&app, "GET", "/api/auth/options", &[], None).await;
+    assert_eq!(options, json!({ "signup_code_required": false, "min_password_length": 12 }));
+}
+
+#[tokio::test]
+async fn sign_up_code_when_configured() {
+    let app = app_with_signup_code(Some("team-07")).await;
+    let (_, options) = send(&app, "GET", "/api/auth/options", &[], None).await;
+    assert_eq!(options["signup_code_required"], true);
+
+    for code in [None, Some("wrong")] {
+        let body = json!({ "username": "kenji", "password": PASSWORD, "signup_code": code });
+        let (status, error) = send(&app, "POST", "/api/auth/signup", &[], Some(body)).await;
+        assert_eq!((status, &error["code"]), (StatusCode::FORBIDDEN, &json!("invalid_signup_code")));
+    }
+    let body = json!({ "username": "kenji", "password": PASSWORD, "signup_code": "team-07" });
+    let (status, _) = send(&app, "POST", "/api/auth/signup", &[], Some(body)).await;
+    assert_eq!(status, StatusCode::CREATED);
 }
 
 #[tokio::test]
@@ -262,7 +325,7 @@ async fn a_ticket_token_opens_only_its_own_ticket() {
     let reply = Some(json!({ "body": "Not my ticket" }));
     let (status, _) = send(&app, "POST", &format!("/api/public/tickets/{other_id}/messages"), &mine, reply).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    let auth = login(&app).await;
+    let auth = login(&app, "kenji").await;
     let worker = [("authorization", auth.as_str())];
     let (_, thread) = send(&app, "GET", &format!("/api/tickets/{other_id}"), &worker, None).await;
     assert_eq!(thread["messages"].as_array().unwrap().len(), 0);
@@ -299,7 +362,7 @@ async fn mcp_needs_the_bearer_token() {
     let (status, _) = send(&app, "POST", "/mcp", &[("authorization", "Bearer made-up")], Some(list.clone())).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     // A worker name is not a login here either.
-    let (status, _) = send(&app, "POST", "/mcp", &[DISPLAY_NAME], Some(list)).await;
+    let (status, _) = send(&app, "POST", "/mcp", &[("x-actor-name", "kenji")], Some(list)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 

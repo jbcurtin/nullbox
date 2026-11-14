@@ -4,7 +4,6 @@ use axum::Json;
 use axum::extract::{FromRequest, FromRequestParts, Path, Query};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, header};
-use percent_encoding::percent_decode_str;
 
 use crate::{ApiError, AppState};
 
@@ -15,15 +14,12 @@ pub const TICKET_TOKEN_HEADER: &str = "x-ticket-token";
 /// The logged-in worker making the request.
 ///
 /// Requires `Authorization: Bearer <token>` from `POST /api/auth/login`; without a live
-/// session every worker endpoint answers 401 `unauthenticated`. The display name comes
-/// from `X-Actor-Name` (percent-encoded, so Japanese names survive HTTP headers), so
-/// people sharing the one login can still tell their replies apart; without it, the
-/// login's username is used. To add SSO/JWT, replace only this extractor.
+/// session every worker endpoint answers 401 `unauthenticated`. `name` is the account's
+/// username, so replies and notes always carry the account that wrote them. (The old
+/// `X-Actor-Name` header is ignored.) To add SSO/JWT, replace only this extractor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Actor {
     pub name: String,
-    /// The account behind the session, whatever display name was picked.
-    pub username: String,
 }
 
 /// The token from `Authorization: Bearer <token>`, if the header has one.
@@ -38,24 +34,11 @@ impl FromRequestParts<AppState> for Actor {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        let session = bearer_token(&parts.headers).and_then(|token| state.sessions.get(token)).ok_or_else(|| {
+        let session = bearer_token(&parts.headers).and_then(|token| state.accounts.session(token)).ok_or_else(|| {
             tracing::info!(target: "audit", path = %parts.uri.path(), "refused worker request without a valid session");
             ApiError::Unauthenticated
         })?;
-
-        let name = match parts.headers.get(ACTOR_HEADER) {
-            None => session.username.clone(),
-            Some(raw) => {
-                let raw = raw.to_str().map_err(|_| ApiError::MissingActor)?;
-                let name = percent_decode_str(raw).decode_utf8().map_err(|_| ApiError::MissingActor)?;
-                let name = name.trim();
-                if name.is_empty() || name.chars().count() > 100 {
-                    return Err(ApiError::MissingActor);
-                }
-                name.to_owned()
-            }
-        };
-        Ok(Actor { name, username: session.username })
+        Ok(Actor { name: session.username })
     }
 }
 

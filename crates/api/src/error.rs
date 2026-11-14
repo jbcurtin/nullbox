@@ -24,6 +24,11 @@ pub enum ErrorCode {
     ImATeapot,
     Unauthenticated,
     InvalidCredentials,
+    AccountAlreadyUsed,
+    UsernameTaken,
+    PasswordTooShort,
+    PasswordLeaked,
+    InvalidSignupCode,
 }
 
 /// The one error shape: `{ code, message }`. `message` is English and for developers only.
@@ -66,6 +71,17 @@ pub enum ApiError {
     Unauthenticated,
     #[error("wrong username or password")]
     InvalidCredentials,
+    /// Each account logs in once; this one already has.
+    #[error("this account has already been used; create a new one")]
+    AccountAlreadyUsed,
+    #[error("username taken")]
+    UsernameTaken,
+    #[error("password too short")]
+    PasswordTooShort,
+    #[error("password appears in a known data breach")]
+    PasswordLeaked,
+    #[error("wrong or missing sign-up code")]
+    InvalidSignupCode,
 }
 
 impl ApiError {
@@ -83,6 +99,11 @@ impl ApiError {
             Self::Teapot => ErrorCode::ImATeapot,
             Self::Unauthenticated => ErrorCode::Unauthenticated,
             Self::InvalidCredentials => ErrorCode::InvalidCredentials,
+            Self::AccountAlreadyUsed => ErrorCode::AccountAlreadyUsed,
+            Self::UsernameTaken => ErrorCode::UsernameTaken,
+            Self::PasswordTooShort => ErrorCode::PasswordTooShort,
+            Self::PasswordLeaked => ErrorCode::PasswordLeaked,
+            Self::InvalidSignupCode => ErrorCode::InvalidSignupCode,
         }
     }
 
@@ -92,6 +113,9 @@ impl ApiError {
             Self::MissingTicketToken | Self::MissingActor | Self::Unauthenticated | Self::InvalidCredentials => {
                 StatusCode::UNAUTHORIZED
             }
+            Self::AccountAlreadyUsed | Self::InvalidSignupCode => StatusCode::FORBIDDEN,
+            Self::UsernameTaken => StatusCode::CONFLICT,
+            Self::PasswordTooShort | Self::PasswordLeaked => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::InvalidTransition(_) | Self::TicketClosed => StatusCode::CONFLICT,

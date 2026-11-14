@@ -29,7 +29,8 @@ pnpm dev
 ```
 
 Open <http://localhost:5173> to file a ticket, and <http://localhost:5173/inbox> for the worker inbox.
-The inbox needs a login: set `WORKER_USERNAME` and `WORKER_PASSWORD` (12+ characters) in `.env` first.
+The inbox needs a worker account: create one on the login page. Each account logs in **once**; after
+logging out, create a new one.
 
 ### Dev container
 
@@ -87,8 +88,10 @@ stable and shared with TypeScript; `message` is English and for developers only.
 | POST | `/tickets/{id}/messages` | `{ body, internal? }` |
 | PATCH | `/tickets/{id}` | `{ status?, severity?, assignee_name? }` (`""` unassigns) |
 | POST | `/tickets/{id}/yeet` | close: sets status `resolved` ("Yeeted") |
-| POST | `/auth/login` | `{ username, password }`, returns `{ token, username, expires_at }` |
-| POST | `/auth/logout` | ends the session in `Authorization` |
+| GET | `/auth/options` | `{ signup_code_required, min_password_length }` for the sign-up form |
+| POST | `/auth/signup` | `{ username, password, signup_code? }`; refuses short and breached passwords |
+| POST | `/auth/login` | `{ username, password }`, returns `{ token, username, expires_at }`; once per account |
+| POST | `/auth/logout` | ends the session in `Authorization`; the account is spent |
 | GET | `/stats/backlog` | `{ open_count, beast_mood, oldest_open_age_secs }` |
 | POST | `/checkout` | start a Stripe Checkout for the Stripe product named "Nothing to See Here", returns `{ url }` |
 | GET | `/admin/export` | every ticket, for the CEO's spreadsheet; header `X-Admin-Token` |
@@ -96,9 +99,13 @@ stable and shared with TypeScript; `message` is English and for developers only.
 | GET | `/teapot` | 418, as specified by RFC 2324 |
 
 Worker endpoints need `Authorization: Bearer <token>` from `/auth/login`; without it they answer 401
-`unauthenticated`. There is one shared login (`WORKER_USERNAME` / `WORKER_PASSWORD`), and sessions last
-12 hours, kept in memory, so restarting the API logs everyone out. `X-Actor-Name` is only the display name
-on replies; without it, the username is used.
+`unauthenticated`. Replies and notes are signed with the account's username (`X-Actor-Name` is ignored).
+
+Worker accounts (`crates/api/src/auth.rs`): passwords need 12+ characters, are hashed with Argon2id, and
+are checked against [Pwned Passwords](https://haveibeenpwned.com/Passwords) (only the first 5 characters
+of the SHA-1 leave the server) plus an offline list. **Each account logs in exactly once**: a second
+login answers 403 `account_already_used`. Sessions last 12 hours, kept in memory, so restarting the API
+logs everyone out. Set `WORKER_SIGNUP_CODE` to require a code at sign-up.
 
 ### MCP server
 
@@ -122,8 +129,8 @@ carries a W3C `traceparent` header continues the caller's trace. See `crates/api
 ## Configuration
 
 API, from env vars or `.env` (see `.env.example` and `crates/api/src/config.rs`):
-`BIND_ADDR`, `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `PUBLIC_WEB_URL`, `ADMIN_TOKEN`, `WORKER_USERNAME`,
-`WORKER_PASSWORD`, `RUST_LOG`, and the optional `MCP_TOKEN`, `STRIPE_API_KEY`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`BIND_ADDR`, `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `PUBLIC_WEB_URL`, `ADMIN_TOKEN`, `WORKER_SIGNUP_CODE`,
+`RUST_LOG`, and the optional `MCP_TOKEN`, `STRIPE_API_KEY`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
 `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_SERVICE_NAME`.
 
 Web, at build time: `VITE_API_BASE_URL`, the origin of the API without `/api`. Unset, the bundle calls
@@ -134,7 +141,7 @@ address, or to an empty value when one web server serves both the web app and `/
 
 | Want to add | Start here |
 |---|---|
-| Login: per-user accounts, SSO | `Sessions` in `crates/api/src/auth.rs` (one shared login today); `Actor` extractor in `crates/api/src/http/extract.rs` (it gets the `AppState`); `authHeaders()` in `apps/web/src/api/client.ts`; for cookies across origins, see `cors()` in `crates/api/src/http/mod.rs` |
+| SSO, account rules | `Accounts` in `crates/api/src/auth.rs` (sign-up, one login per account, sessions); `Actor` extractor in `crates/api/src/http/extract.rs` (it gets the `AppState`); `authHeaders()` in `apps/web/src/api/client.ts`; for cookies across origins, see `cors()` in `crates/api/src/http/mod.rs` |
 | Roles / permissions | `policy::can` in `crates/api/src/policy.rs` (always `true` today) |
 | Audit log, webhooks, email, metrics | `EventSink` in `crates/api/src/events.rs` (only logs today); refused requests in the `Actor` extractor |
 | Rate limiting, tracing exporters, CORS hardening | `middleware()` in `crates/api/src/http/mod.rs` |

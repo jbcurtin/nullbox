@@ -24,9 +24,11 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 
 - [ ] **Members-only page stays closed (1)** 🤖: a customer can still read their ticket with its token. The worker API refuses requests with no login, with only `X-Actor-Name`, and with a made-up token.
   - Built by a teammate (commit `0e2fbbe`), live since 2026-11-14. Checked on the live site: the worker API answers 401 with no login, with only `X-Actor-Name`, and with a made-up token; after `POST /api/auth/login` it answers 200
-  - The login is one shared account: `WORKER_USERNAME` and `WORKER_PASSWORD` in the server `.env` (`ssh team-07 'grep ^WORKER_ ~/nullbox/.env'`). Still to do: press Check
+  - The shared `WORKER_USERNAME`/`WORKER_PASSWORD` login was replaced by per-person accounts (see below). After that deploy, the 401 checks still hold. Still to do: press Check
 - [ ] **Username and password (2)** 🧑‍⚖️: sign up, log in, reply under your own account name, locked out again after logging out. Short passwords and leaked passwords are refused at sign-up.
-  - Not done. The shared worker login above has no sign-up and no per-person accounts
+  - Built, **not deployed yet**: sign-up on `/inbox` with your own username and password (12+ characters, Argon2id, refused if in Pwned Passwords or a common-password list); replies carry the account's username
+  - Each account logs in **once**: after logging out, that account is refused and you create a new one. Sessions are in memory, so a deploy logs everyone out
+  - Optional `WORKER_SIGNUP_CODE` in the server `.env` requires a code at sign-up. Remove `WORKER_USERNAME`/`WORKER_PASSWORD` from it; they're no longer read
 - [ ] **Single sign-on (2)** 🧑‍⚖️: sign in through a provider, reply under that account name, locked out after logging out. The judge also reviews how sign-in is built.
 
 ## Security (6 pts) 🤖 🧑‍⚖️

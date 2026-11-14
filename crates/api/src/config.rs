@@ -1,7 +1,5 @@
 use std::net::SocketAddr;
 
-use crate::auth::Credentials;
-
 /// Every setting, read from the environment (plus `.env` in dev). See `.env.example`.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -15,8 +13,8 @@ pub struct Config {
     pub public_web_url: String,
     /// `ADMIN_TOKEN`: unlocks `GET /api/admin/export`, the CEO's spreadsheet.
     pub admin_token: String,
-    /// `WORKER_USERNAME` + `WORKER_PASSWORD`: the login for the worker inbox. Unset, nobody can log in.
-    pub worker_credentials: Option<Credentials>,
+    /// `WORKER_SIGNUP_CODE`: if set, creating a worker account needs this code. Unset, sign-up is open.
+    pub worker_signup_code: Option<String>,
     /// `MCP_TOKEN`: the bearer token for the MCP server at `/mcp`. Unset means `/mcp` refuses everyone.
     pub mcp_token: Option<String>,
     /// `STRIPE_API_KEY`: the Stripe secret key. Unset means the shop cannot take payments.
@@ -40,15 +38,8 @@ impl Config {
             .parse()
             .map_err(|e: std::net::AddrParseError| ConfigError { name: "BIND_ADDR", reason: e.to_string() })?;
 
-        let worker_credentials = match (std::env::var("WORKER_USERNAME"), std::env::var("WORKER_PASSWORD")) {
-            (Ok(username), Ok(password)) if !username.trim().is_empty() && !password.is_empty() => {
-                if password.chars().count() < 12 {
-                    return Err(ConfigError { name: "WORKER_PASSWORD", reason: "use at least 12 characters".into() });
-                }
-                Some(Credentials { username: username.trim().to_owned(), password })
-            }
-            _ => None,
-        };
+        let worker_signup_code =
+            std::env::var("WORKER_SIGNUP_CODE").ok().map(|code| code.trim().to_owned()).filter(|code| !code.is_empty());
 
         Ok(Self {
             bind_addr,
@@ -60,7 +51,7 @@ impl Config {
                 .collect(),
             public_web_url: var("PUBLIC_WEB_URL", "http://localhost:5173").trim_end_matches('/').to_owned(),
             admin_token: secret("ADMIN_TOKEN")?.ok_or_else(|| too_short("ADMIN_TOKEN"))?,
-            worker_credentials,
+            worker_signup_code,
             mcp_token: secret("MCP_TOKEN")?,
             stripe_api_key: secret("STRIPE_API_KEY")?,
             stripe_api_base: var("STRIPE_API_BASE", "https://api.stripe.com").trim_end_matches('/').to_owned(),

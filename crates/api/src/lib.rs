@@ -1,7 +1,7 @@
 //! Nullbox API: the HTTP layer, services and storage around `nullbox-domain`.
 //!
 //! Extension seams, each in one place:
-//! - auth: [`http::extract::Actor`], sessions in [`auth::Sessions`]
+//! - auth: [`http::extract::Actor`], accounts and sessions in [`auth::Accounts`]
 //! - authorization: [`policy::can`]
 //! - audit/webhooks/metrics: [`events::EventSink`]
 //! - middleware (tracing, CORS, rate limits...): [`http::middleware`]
@@ -17,6 +17,7 @@ pub mod dto;
 pub mod error;
 pub mod events;
 pub mod http;
+pub mod passwords;
 pub mod payments;
 pub mod policy;
 pub mod repo;
@@ -35,21 +36,25 @@ pub struct AppState {
     pub tickets: Arc<service::TicketService>,
     pub payments: Arc<payments::Payments>,
     pub config: Arc<Config>,
-    pub sessions: Arc<auth::Sessions>,
+    pub accounts: Arc<auth::Accounts>,
 }
 
 impl AppState {
     pub fn new(pool: sqlx::SqlitePool, config: Config) -> Self {
-        let repo = Arc::new(repo::SqliteTicketRepository::new(pool));
+        Self::with_leak_check(pool, config, Arc::new(passwords::PwnedPasswords::default()))
+    }
+
+    /// Like `new`, with a chosen leaked-password check (tests use the offline one).
+    pub fn with_leak_check(pool: sqlx::SqlitePool, config: Config, leaks: Arc<dyn passwords::LeakCheck>) -> Self {
+        let repo = Arc::new(repo::SqliteTicketRepository::new(pool.clone()));
         let events = Arc::new(events::TracingEventSink);
-        if config.worker_credentials.is_none() {
-            tracing::warn!("WORKER_USERNAME/WORKER_PASSWORD not set: the worker inbox is locked for everyone");
-        }
+        let workers = Arc::new(repo::SqliteWorkerRepository::new(pool));
+        let accounts = auth::Accounts::new(workers, leaks, config.worker_signup_code.clone());
         Self {
             tickets: Arc::new(service::TicketService::new(repo, events)),
             payments: Arc::new(payments::Payments::new(&config)),
             config: Arc::new(config),
-            sessions: Arc::new(auth::Sessions::default()),
+            accounts: Arc::new(accounts),
         }
     }
 }
