@@ -15,6 +15,7 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
   - Built 2026-11-14 in `.github/workflows/cicd.yml`. A push to `main` runs `test` and `build` in parallel, then `deploy`: the images are built in Actions, sent to the server with `docker save | ssh docker load`, and started with `docker compose up -d --no-build`
   - Secret `DEPLOY_SSH_KEY`; variables `DEPLOY_HOST=team-07.fasthacks.cloud`, `DEPLOY_USER=deploy`
   - `origin` is `jbcurtin/nullbox` and we have push access, so no fork was needed
+  - First run on `main` (2026-11-14, cold caches): 5 min 8 s, all three jobs green, and `/level-up.txt` served HOT's code afterwards. Still to do: press Check
 - [ ] **Fast builds with a cache (1)**: every Actions run for HOT's commit succeeds within 4 minutes, and the code goes live.
   - The images build in Actions with a buildx layer cache (`type=gha`), and the API image uses cargo-chef so compiled dependencies stay cached. No registry: the images go to the server over SSH
   - Measured on a branch: 5 min with every cache empty, 51 s for a change to `apps/web/public` with warm caches. The first run on `main` is a cold one, because caches are per branch
