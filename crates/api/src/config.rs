@@ -17,6 +17,12 @@ pub struct Config {
     pub admin_token: String,
     /// `WORKER_USERNAME` + `WORKER_PASSWORD`: the login for the worker inbox. Unset, nobody can log in.
     pub worker_credentials: Option<Credentials>,
+    /// `MCP_TOKEN`: the bearer token for the MCP server at `/mcp`. Unset means `/mcp` refuses everyone.
+    pub mcp_token: Option<String>,
+    /// `STRIPE_API_KEY`: the Stripe secret key. Unset means the shop cannot take payments.
+    pub stripe_api_key: Option<String>,
+    /// `STRIPE_API_BASE`: where the Stripe API lives. Only a test double needs to change it.
+    pub stripe_api_base: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -53,21 +59,33 @@ impl Config {
                 .filter(|origin| !origin.is_empty())
                 .collect(),
             public_web_url: var("PUBLIC_WEB_URL", "http://localhost:5173").trim_end_matches('/').to_owned(),
-            admin_token: admin_token()?,
+            admin_token: secret("ADMIN_TOKEN")?.ok_or_else(|| too_short("ADMIN_TOKEN"))?,
             worker_credentials,
+            mcp_token: secret("MCP_TOKEN")?,
+            stripe_api_key: secret("STRIPE_API_KEY")?,
+            stripe_api_base: var("STRIPE_API_BASE", "https://api.stripe.com").trim_end_matches('/').to_owned(),
         })
     }
 }
 
-/// Required, with no default: a default token would be in the source code for anyone to read.
-fn admin_token() -> Result<String, ConfigError> {
-    const MIN_LEN: usize = 32;
-    let token = std::env::var("ADMIN_TOKEN").unwrap_or_default().trim().to_owned();
-    if token.len() < MIN_LEN {
-        return Err(ConfigError {
-            name: "ADMIN_TOKEN",
-            reason: format!("must be set to at least {MIN_LEN} characters, e.g. the output of `openssl rand -hex 32`"),
-        });
+/// A secret from the environment: `None` when unset or blank, an error when too short to be one.
+/// Secrets have no defaults: a default would be in the source code for anyone to read.
+fn secret(name: &'static str) -> Result<Option<String>, ConfigError> {
+    let value = std::env::var(name).unwrap_or_default().trim().to_owned();
+    match value.len() {
+        0 => Ok(None),
+        len if len < MIN_SECRET_LEN => Err(too_short(name)),
+        _ => Ok(Some(value)),
     }
-    Ok(token)
+}
+
+const MIN_SECRET_LEN: usize = 32;
+
+fn too_short(name: &'static str) -> ConfigError {
+    ConfigError {
+        name,
+        reason: format!(
+            "must be set to at least {MIN_SECRET_LEN} characters, e.g. the output of `openssl rand -hex 32`"
+        ),
+    }
 }

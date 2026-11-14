@@ -5,7 +5,9 @@
 //! - authorization: [`policy::can`]
 //! - audit/webhooks/metrics: [`events::EventSink`]
 //! - middleware (tracing, CORS, rate limits...): [`http::middleware`]
+//! - OpenTelemetry: [`telemetry`]
 //! - storage: [`repo::TicketRepository`]
+//! - payments: [`payments::Payments`]
 //! - settings: [`config::Config`]
 
 pub mod auth;
@@ -15,9 +17,11 @@ pub mod dto;
 pub mod error;
 pub mod events;
 pub mod http;
+pub mod payments;
 pub mod policy;
 pub mod repo;
 pub mod service;
+pub mod telemetry;
 pub mod token;
 
 use std::sync::Arc;
@@ -29,6 +33,7 @@ pub use error::ApiError;
 #[derive(Clone)]
 pub struct AppState {
     pub tickets: Arc<service::TicketService>,
+    pub payments: Arc<payments::Payments>,
     pub config: Arc<Config>,
     pub sessions: Arc<auth::Sessions>,
 }
@@ -42,6 +47,7 @@ impl AppState {
         }
         Self {
             tickets: Arc::new(service::TicketService::new(repo, events)),
+            payments: Arc::new(payments::Payments::new(&config)),
             config: Arc::new(config),
             sessions: Arc::new(auth::Sessions::default()),
         }

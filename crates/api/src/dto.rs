@@ -99,3 +99,10 @@ pub struct LoginResponse {
     pub username: String,
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct CheckoutResponse {
+    /// The Stripe Checkout page. Send the browser there.
+    pub url: String,
+}

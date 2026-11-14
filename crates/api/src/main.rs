@@ -1,13 +1,10 @@
 use anyhow::Context;
-use nullbox_api::{AppState, Config, db, http};
-use tracing_subscriber::EnvFilter;
+use nullbox_api::{AppState, Config, db, http, telemetry};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,tower_http=debug".into()))
-        .init();
+    let telemetry = telemetry::init();
     std::panic::set_hook(Box::new(|info| {
         tracing::error!(target: "EXISTENTIAL", %info, "the server has stared into the void, and the void panicked back");
     }));
@@ -25,5 +22,6 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("shutting down, tickets will have to wait");
         })
         .await?;
+    telemetry.shutdown();
     Ok(())
 }

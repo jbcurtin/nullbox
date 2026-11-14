@@ -61,7 +61,7 @@ Nothing enforces these yet. That's one of your upgrades.
 ## Layout
 
 ```
-apps/web                     React + Vite SPA (customer portal at /, worker inbox at /inbox)
+apps/web                     React + Vite SPA (customer portal at /, shop at /shop, worker inbox at /inbox)
   src/api/client.ts          the only module that calls fetch
   src/api/generated/         TS types generated from Rust by ts-rs (committed)
   src/copy/                  en.ts, ja.ts and the CopyProvider
@@ -90,6 +90,7 @@ stable and shared with TypeScript; `message` is English and for developers only.
 | POST | `/auth/login` | `{ username, password }`, returns `{ token, username, expires_at }` |
 | POST | `/auth/logout` | ends the session in `Authorization` |
 | GET | `/stats/backlog` | `{ open_count, beast_mood, oldest_open_age_secs }` |
+| POST | `/checkout` | start a Stripe Checkout for the shop's one product, returns `{ url }` |
 | GET | `/admin/export` | every ticket, for the CEO's spreadsheet; header `X-Admin-Token` |
 | GET | `/healthz` | liveness |
 | GET | `/teapot` | 418, as specified by RFC 2324 |
@@ -99,10 +100,31 @@ Worker endpoints need `Authorization: Bearer <token>` from `/auth/login`; withou
 12 hours, kept in memory, so restarting the API logs everyone out. `X-Actor-Name` is only the display name
 on replies; without it, the username is used.
 
+### MCP server
+
+`POST /mcp` is an [MCP](https://modelcontextprotocol.io) server (Streamable HTTP, tools only), so an
+AI agent can work tickets. It needs `Authorization: Bearer <MCP_TOKEN>`; without `MCP_TOKEN` set it
+refuses everyone. It speaks protocol 2026-07-28 (stateless) and 2025-11-25 and older (`initialize`,
+then a session). Tools: `list_tickets`, `get_ticket`, `reply_to_ticket`, `add_internal_note`,
+`update_ticket`. A ticket is named by its UUID or its number. Replies are signed "AI agent".
+
+```sh
+curl -X POST http://localhost:3000/mcp -H "Authorization: Bearer $MCP_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+### Telemetry
+
+With `OTEL_EXPORTER_OTLP_ENDPOINT` set, the API exports traces and logs over OTLP (http/protobuf):
+one span per request, with the ticket's ID, number and subject when one is created. A request that
+carries a W3C `traceparent` header continues the caller's trace. See `crates/api/src/telemetry.rs`.
+
 ## Configuration
 
 API, from env vars or `.env` (see `.env.example` and `crates/api/src/config.rs`):
-`BIND_ADDR`, `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `PUBLIC_WEB_URL`, `ADMIN_TOKEN`, `WORKER_USERNAME`, `WORKER_PASSWORD`, `RUST_LOG`.
+`BIND_ADDR`, `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `PUBLIC_WEB_URL`, `ADMIN_TOKEN`, `WORKER_USERNAME`,
+`WORKER_PASSWORD`, `RUST_LOG`, and the optional `MCP_TOKEN`, `STRIPE_API_KEY`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_SERVICE_NAME`.
 
 Web, at build time: `VITE_API_BASE_URL`, the origin of the API without `/api`. Unset, the bundle calls
 `http://localhost:3000`, which is only right on your laptop. For a deployment, set it to your site's
@@ -117,9 +139,9 @@ address, or to an empty value when one web server serves both the web app and `/
 | Audit log, webhooks, email, metrics | `EventSink` in `crates/api/src/events.rs` (only logs today); refused requests in the `Actor` extractor |
 | Rate limiting, tracing exporters, CORS hardening | `middleware()` in `crates/api/src/http/mod.rs` |
 | Postgres, multi-tenancy, backups | `TicketRepository` in `crates/api/src/repo/mod.rs` |
-| OpenTelemetry | everything logs through `tracing`; add a layer in `main.rs` |
-| Payments | a new route next to the others in `crates/api/src/http/mod.rs`; a page in `apps/web/src/router.tsx`; keys in `Config` |
-| MCP server for AI agents | a service at `/mcp`, next to the `/api` nest in `router()`; let its tools call `TicketService`, like the worker handlers do |
+| OpenTelemetry | done: `crates/api/src/telemetry.rs`. Metrics would be one more exporter there |
+| Payments | done: `crates/api/src/payments.rs` and the shop at `/shop`. More products or a webhook start there |
+| MCP server for AI agents | done: `crates/api/src/http/mcp.rs`. A new tool is an entry in `tools()` and an arm in `call_tool()` |
 | More languages, Serious Mode | add a dictionary of type `Copy` next to `apps/web/src/copy/en.ts` |
 | Tauri desktop/mobile | `VITE_API_BASE_URL` + `createHashRouter` in `apps/web/src/router.tsx` |
 

@@ -36,6 +36,11 @@ export function useCustomerTicket(id: string, token: string | null) {
   });
 }
 
+/** Starts a Stripe Checkout for the shop's one product. */
+export function useCheckout() {
+  return useMutation({ mutationFn: api.createCheckout });
+}
+
 /** After any worker change, the inbox, the ticket and the Beast may all be stale. */
 function useInvalidateTickets() {
   const queryClient = useQueryClient();

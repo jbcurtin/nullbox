@@ -15,7 +15,7 @@ const en = {
     title: "Nullbox: report a problem to the support void",
     description:
       "Nullbox is a tiny support desk. Report a problem, get a secret link to your ticket, and follow the replies while the Backlog Beast watches the inbox.",
-    nav: { submit: "Report a problem", inbox: "Worker inbox" },
+    nav: { submit: "Report a problem", shop: "Shop", inbox: "Worker inbox" },
     language: "Language",
     footer: "No tickets were harmed in the making of this inbox.",
   },
@@ -99,6 +99,21 @@ const en = {
     send: "Send reply",
     closedNotice: "This ticket was sent to the Shadow Realm. Please open a new one.",
     sendHint: "Ctrl + Enter to send",
+  },
+
+  shop: {
+    title: "Shop",
+    intro: "Support the void. One product, lovingly not made.",
+    // The product name is the same in every language: it is what Stripe shows.
+    productName: "Nothing to See Here",
+    productDescription: "Exactly what it says. Ships instantly, weighs nothing, never breaks.",
+    price: "¥500",
+    buy: "Buy nothing for ¥500",
+    redirecting: "Taking you to the checkout…",
+    paymentHint: "You pay on Stripe's secure checkout page. We never see your card.",
+    thanksTitle: "Thank you!",
+    thanksBody: "Your nothing is on its way. It has, in a sense, already arrived.",
+    reference: "Order reference",
   },
 
   worker: {

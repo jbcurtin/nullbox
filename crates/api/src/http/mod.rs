@@ -4,6 +4,7 @@ mod admin;
 mod auth;
 mod customer;
 pub mod extract;
+mod mcp;
 mod utility;
 mod worker;
 
@@ -13,7 +14,7 @@ use axum::routing::{get, post};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::{AppState, Config};
+use crate::{AppState, Config, telemetry};
 use extract::{ACTOR_HEADER, TICKET_TOKEN_HEADER};
 
 pub fn router(state: AppState) -> Router {
@@ -30,6 +31,8 @@ pub fn router(state: AppState) -> Router {
         .route("/tickets/{id}/messages", post(worker::add_message))
         .route("/tickets/{id}/yeet", post(worker::yeet_ticket))
         .route("/stats/backlog", get(worker::backlog_stats))
+        // shop
+        .route("/checkout", post(customer::checkout))
         // admin
         .route("/admin/export", get(admin::export))
         // utility
@@ -37,7 +40,8 @@ pub fn router(state: AppState) -> Router {
         .route("/teapot", get(utility::teapot));
 
     let config = state.config.clone();
-    middleware(Router::new().nest("/api", api).fallback(utility::not_found), &config).with_state(state)
+    let app = Router::new().nest("/api", api).route("/mcp", post(mcp::handle)).fallback(utility::not_found);
+    middleware(app, &config).with_state(state)
 }
 
 /// The one place for cross-cutting layers. Tracing exporters, rate limiting,
@@ -46,7 +50,8 @@ pub fn router(state: AppState) -> Router {
 /// Routes outside `/api` (an MCP server at `/mcp`, say) go next to the `nest` in
 /// `router`, so they pass through here too.
 pub fn middleware<S: Clone + Send + Sync + 'static>(router: Router<S>, config: &Config) -> Router<S> {
-    router.layer(cors(config)).layer(TraceLayer::new_for_http())
+    let trace = TraceLayer::new_for_http().make_span_with(telemetry::request_span).on_response(telemetry::on_response);
+    router.layer(cors(config)).layer(trace)
 }
 
 /// CORS for the web app on another origin (Vite in dev, Tauri). `Authorization` is

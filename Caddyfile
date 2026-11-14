@@ -3,7 +3,9 @@
 {$SITE_ADDRESS:localhost} {
 	encode zstd gzip
 
-	handle /api/* {
+	# The API, and its MCP server for agents.
+	@api path /api/* /mcp /mcp/*
+	handle @api {
 		reverse_proxy api:3000
 	}
 

@@ -8,6 +8,7 @@
  */
 import { getActorName } from "./actor";
 import type { BacklogStats } from "./generated/BacklogStats";
+import type { CheckoutResponse } from "./generated/CheckoutResponse";
 import type { CreateTicketRequest } from "./generated/CreateTicketRequest";
 import type { CreateTicketResponse } from "./generated/CreateTicketResponse";
 import type { ErrorBody } from "./generated/ErrorBody";
@@ -98,6 +99,9 @@ export const api = {
   // worker login
   login: (body: LoginRequest) => request<LoginResponse>("POST", "/auth/login", { body }),
   logout: () => request<void>("POST", "/auth/logout", { headers: authHeaders() }),
+  // shop
+  /** Starts a Stripe Checkout; send the browser to the returned URL. */
+  createCheckout: () => request<CheckoutResponse>("POST", "/checkout"),
 
   // workers
   listTickets: (status?: TicketStatus) =>

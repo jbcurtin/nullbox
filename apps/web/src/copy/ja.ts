@@ -11,7 +11,7 @@ const ja = {
     title: "Nullbox（ヌルボックス）: 困りごとを虚無に報告するサポート窓口",
     description:
       "Nullbox は小さなサポート窓口です。問題を報告すると、チケット専用の秘密リンクが届きます。返信は、バックログの獣が見守る受信箱から届きます。",
-    nav: { submit: "問題を報告", inbox: "対応者の受信箱" },
+    nav: { submit: "問題を報告", shop: "ショップ", inbox: "対応者の受信箱" },
     language: "言語",
     footer: "この受信箱の制作において、チケットは一枚も傷ついておりません。",
   },
@@ -94,6 +94,20 @@ const ja = {
     send: "返信する",
     closedNotice: "このチケットは闇の世界へ送還されました。新しいチケットを作成してください。",
     sendHint: "Ctrl + Enter で送信",
+  },
+
+  shop: {
+    title: "ショップ",
+    intro: "虚無を応援しよう。商品はひとつ、心を込めて何も作っていません。",
+    productName: "Nothing to See Here",
+    productDescription: "名前のとおり、何もありません。即日発送、重さゼロ、絶対に壊れません。",
+    price: "¥500",
+    buy: "¥500で「無」を買う",
+    redirecting: "決済ページへ移動中…",
+    paymentHint: "お支払いは Stripe の決済ページで行います。カード情報は当サイトには届きません。",
+    thanksTitle: "ありがとうございます！",
+    thanksBody: "ご注文の「無」を発送しました。ある意味、もう届いています。",
+    reference: "注文番号",
   },
 
   worker: {

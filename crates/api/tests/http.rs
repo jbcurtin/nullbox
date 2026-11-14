@@ -19,6 +19,9 @@ async fn app() -> Router {
         public_web_url: "http://localhost:5173".into(),
         admin_token: "test-admin-token".into(),
         worker_credentials: Some(Credentials { username: "agent".into(), password: PASSWORD.into() }),
+        mcp_token: Some(MCP_TOKEN.into()),
+        stripe_api_key: None,
+        stripe_api_base: "http://127.0.0.1:1".into(),
     };
     http::router(AppState::new(pool, config))
 }
@@ -58,6 +61,7 @@ async fn login(app: &Router) -> String {
     assert_eq!(status, StatusCode::OK);
     format!("Bearer {}", body["token"].as_str().unwrap())
 }
+const MCP_TOKEN: &str = "test-mcp-token";
 
 #[tokio::test]
 async fn customer_and_worker_round_trip() {
@@ -226,9 +230,174 @@ async fn nobody_can_log_in_without_configured_credentials() {
         public_web_url: "http://localhost:5173".into(),
         admin_token: "test-admin-token".into(),
         worker_credentials: None,
+        mcp_token: None,
+        stripe_api_key: None,
+        stripe_api_base: "http://127.0.0.1:1".into(),
     };
     let app = http::router(AppState::new(pool, config));
     let (status, error) =
         send(&app, "POST", "/api/auth/login", &[], Some(json!({ "username": "", "password": "" }))).await;
     assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("invalid_credentials")));
+}
+
+#[tokio::test]
+async fn a_ticket_token_opens_only_its_own_ticket() {
+    let app = app().await;
+    let mut tickets = Vec::new();
+    for subject in ["Mine", "Someone else's"] {
+        let body = json!({ "subject": subject, "body": "x", "severity": "p3" });
+        let (_, created) = send(&app, "POST", "/api/tickets", &[], Some(body)).await;
+        tickets.push((
+            created["ticket"]["id"].as_str().unwrap().to_owned(),
+            created["access_token"].as_str().unwrap().to_owned(),
+        ));
+    }
+    let (my_id, my_token) = &tickets[0];
+    let (other_id, _) = &tickets[1];
+    let mine = [("x-ticket-token", my_token.as_str())];
+
+    // Changing the ticket ID in the link shows nothing and answers nothing.
+    let (status, error) = send(&app, "GET", &format!("/api/public/tickets/{other_id}"), &mine, None).await;
+    assert_eq!((status, &error["code"]), (StatusCode::NOT_FOUND, &json!("not_found")));
+    let reply = Some(json!({ "body": "Not my ticket" }));
+    let (status, _) = send(&app, "POST", &format!("/api/public/tickets/{other_id}/messages"), &mine, reply).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let auth = login(&app).await;
+    let worker = [("authorization", auth.as_str())];
+    let (_, thread) = send(&app, "GET", &format!("/api/tickets/{other_id}"), &worker, None).await;
+    assert_eq!(thread["messages"].as_array().unwrap().len(), 0);
+
+    // The token still opens its own ticket.
+    let (status, thread) = send(&app, "GET", &format!("/api/public/tickets/{my_id}"), &mine, None).await;
+    assert_eq!((status, &thread["ticket"]["subject"]), (StatusCode::OK, &json!("Mine")));
+}
+
+/// One MCP request with the bearer token; returns status, headers and JSON body.
+async fn mcp(app: &Router, headers: &[(&str, &str)], body: Value) -> (StatusCode, axum::http::HeaderMap, Value) {
+    let mut req = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header("authorization", format!("Bearer {MCP_TOKEN}"))
+        .header("content-type", "application/json")
+        .header("accept", "application/json, text/event-stream");
+    for (name, value) in headers {
+        req = req.header(*name, *value);
+    }
+    let res = app.clone().oneshot(req.body(Body::from(body.to_string())).unwrap()).await.unwrap();
+    let (status, headers) = (res.status(), res.headers().clone());
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (status, headers, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn mcp_needs_the_bearer_token() {
+    let app = app().await;
+    let list = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
+
+    let (status, _) = send(&app, "POST", "/mcp", &[], Some(list.clone())).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = send(&app, "POST", "/mcp", &[("authorization", "Bearer made-up")], Some(list.clone())).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // A worker name is not a login here either.
+    let (status, _) = send(&app, "POST", "/mcp", &[DISPLAY_NAME], Some(list)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn mcp_2025_handshake_then_an_agent_answers_a_ticket() {
+    let app = app().await;
+    let ticket = json!({ "subject": "Printer on fire", "body": "Again.", "severity": "p1" });
+    let (_, created) = send(&app, "POST", "/api/tickets", &[], Some(ticket)).await;
+    let id = created["ticket"]["id"].as_str().unwrap().to_owned();
+    let token = created["access_token"].as_str().unwrap().to_owned();
+
+    // initialize hands out a session and agrees on the version.
+    let init = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+        "protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } } });
+    let (status, headers, body) = mcp(&app, &[], init).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["result"]["protocolVersion"], "2025-11-25");
+    assert!(body["result"]["capabilities"]["tools"].is_object());
+    let session = headers["mcp-session-id"].to_str().unwrap().to_owned();
+    let session = [("mcp-session-id", session.as_str()), ("mcp-protocol-version", "2025-11-25")];
+
+    let (status, _, body) =
+        mcp(&app, &session, json!({ "jsonrpc": "2.0", "method": "notifications/initialized" })).await;
+    assert_eq!((status, body), (StatusCode::ACCEPTED, Value::Null));
+
+    let (_, _, body) = mcp(&app, &session, json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" })).await;
+    let tools = body["result"]["tools"].as_array().unwrap();
+    assert!(tools.iter().any(|tool| tool["name"] == "reply_to_ticket"));
+    assert!(tools.iter().all(|tool| tool["inputSchema"]["type"] == "object"));
+    assert!(body["result"].get("resultType").is_none());
+
+    // Given only the ticket ID: read it, then answer the customer.
+    let call = |id: u32, name: &str, arguments: Value| json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": name, "arguments": arguments } });
+    let (_, _, body) = mcp(&app, &session, call(3, "get_ticket", json!({ "ticket_id": id }))).await;
+    assert_eq!(body["result"]["isError"], false);
+    assert!(body["result"]["content"][0]["text"].as_str().unwrap().contains("Printer on fire"));
+    let reply = json!({ "ticket_id": "#1", "body": "Have you tried water?" });
+    let (_, _, body) = mcp(&app, &session, call(4, "reply_to_ticket", reply)).await;
+    assert_eq!(body["result"]["isError"], false);
+
+    // The reply shows up on the customer's ticket.
+    let (_, thread) =
+        send(&app, "GET", &format!("/api/public/tickets/{id}"), &[("x-ticket-token", &token)], None).await;
+    let message = &thread["messages"][0];
+    assert_eq!((&message["body"], &message["author_kind"]), (&json!("Have you tried water?"), &json!("worker")));
+
+    // A tool that fails says so in its result; an unknown tool is a protocol error.
+    let missing = json!({ "ticket_id": "999" });
+    let (status, _, body) = mcp(&app, &session, call(5, "get_ticket", missing)).await;
+    assert_eq!((status, &body["result"]["isError"]), (StatusCode::OK, &json!(true)));
+    let (_, _, body) = mcp(&app, &session, call(6, "nope", json!({}))).await;
+    assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn mcp_2026_is_stateless() {
+    let app = app().await;
+    let meta = json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+    });
+    let version = ("mcp-protocol-version", "2026-07-28");
+
+    let discover = json!({ "jsonrpc": "2.0", "id": "d", "method": "server/discover", "params": { "_meta": meta } });
+    let (status, headers, body) = mcp(&app, &[version, ("mcp-method", "server/discover")], discover).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(headers.get("mcp-session-id").is_none());
+    assert_eq!(body["result"]["supportedVersions"], json!(["2026-07-28"]));
+    assert_eq!(body["result"]["resultType"], "complete");
+
+    // No handshake: tools/list works as the first request.
+    let list = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": { "_meta": meta } });
+    let (status, _, body) = mcp(&app, &[version, ("mcp-method", "tools/list")], list.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    let result = &body["result"];
+    assert!(!result["tools"].as_array().unwrap().is_empty());
+    assert_eq!((&result["resultType"], &result["cacheScope"]), (&json!("complete"), &json!("public")));
+    assert!(result["ttlMs"].is_number());
+    assert_eq!(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "nullbox");
+
+    // Headers must agree with the body; unknown versions and methods are refused.
+    let (status, _, body) = mcp(&app, &[version, ("mcp-method", "tools/call")], list).await;
+    assert_eq!((status, &body["error"]["code"]), (StatusCode::BAD_REQUEST, &json!(-32020)));
+    let old = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": { "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "1900-01-01" } } });
+    let (status, _, body) = mcp(&app, &[], old).await;
+    assert_eq!((status, &body["error"]["code"]), (StatusCode::BAD_REQUEST, &json!(-32022)));
+    assert_eq!(body["error"]["data"]["requested"], "1900-01-01");
+    let unknown = json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/list", "params": { "_meta": meta } });
+    let (status, _, body) = mcp(&app, &[version], unknown).await;
+    assert_eq!((status, &body["error"]["code"]), (StatusCode::NOT_FOUND, &json!(-32601)));
+}
+
+#[tokio::test]
+async fn checkout_without_a_stripe_key_is_unavailable() {
+    let app = app().await;
+    let (status, error) = send(&app, "POST", "/api/checkout", &[], None).await;
+    assert_eq!((status, &error["code"]), (StatusCode::SERVICE_UNAVAILABLE, &json!("service_unavailable")));
+    // The reason is logged, not sent.
+    assert!(!error["message"].as_str().unwrap().contains("STRIPE"));
 }

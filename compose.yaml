@@ -11,6 +11,14 @@ services:
       # The worker inbox login. Unset, nobody can log in to /inbox.
       WORKER_USERNAME: ${WORKER_USERNAME:-}
       WORKER_PASSWORD: ${WORKER_PASSWORD:-}
+      # Optional: without it, the MCP server at /mcp refuses everyone.
+      MCP_TOKEN: ${MCP_TOKEN:-}
+      # Optional: without it, the shop cannot take payments.
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      # Optional: without an endpoint, no telemetry leaves the server.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
     volumes:
       - nullbox-data:/data
 
