@@ -57,7 +57,10 @@ pnpm lint                  # Biome
 pnpm build                 # typecheck + production bundle in apps/web/dist
 ```
 
-Nothing enforces these yet. That's one of your upgrades.
+GitHub Actions runs the tests on every push and pull request (`.github/workflows/cicd.yml`). A push to
+`main` that passes them is deployed: the images are built in Actions, sent to the server over SSH and
+started there. A failing test keeps that version off the site. The workflow needs the secret
+`DEPLOY_SSH_KEY` and the variables `DEPLOY_HOST` and `DEPLOY_USER`.
 
 ## Layout
 
