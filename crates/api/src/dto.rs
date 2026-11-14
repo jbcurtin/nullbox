@@ -83,3 +83,19 @@ pub struct BacklogStats {
     #[ts(type = "number | null")]
     pub oldest_open_age_secs: Option<i64>,
 }
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct LoginResponse {
+    /// Send as `Authorization: Bearer <token>` on every worker request. Shown once.
+    pub token: String,
+    pub username: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}

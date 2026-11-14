@@ -5,6 +5,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use nullbox_api::auth::Credentials;
 use nullbox_api::{AppState, Config, db, http};
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -17,6 +18,7 @@ async fn app() -> Router {
         cors_allowed_origins: vec!["http://localhost:5173".into()],
         public_web_url: "http://localhost:5173".into(),
         admin_token: "test-admin-token".into(),
+        worker_credentials: Some(Credentials { username: "agent".into(), password: PASSWORD.into() }),
     };
     http::router(AppState::new(pool, config))
 }
@@ -46,11 +48,22 @@ async fn send(
     (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
 }
 
-const WORKER: (&str, &str) = ("x-actor-name", "%E5%B1%B1%E7%94%B0"); // 山田, percent-encoded
+const PASSWORD: &str = "correct horse battery staple";
+const DISPLAY_NAME: (&str, &str) = ("x-actor-name", "%E5%B1%B1%E7%94%B0"); // 山田, percent-encoded
+
+/// Logs in as the worker; returns the `Authorization` header value.
+async fn login(app: &Router) -> String {
+    let (status, body) =
+        send(app, "POST", "/api/auth/login", &[], Some(json!({ "username": "agent", "password": PASSWORD }))).await;
+    assert_eq!(status, StatusCode::OK);
+    format!("Bearer {}", body["token"].as_str().unwrap())
+}
 
 #[tokio::test]
 async fn customer_and_worker_round_trip() {
     let app = app().await;
+    let auth = login(&app).await;
+    let worker = [("authorization", auth.as_str()), DISPLAY_NAME];
 
     // Anonymous customer creates a ticket.
     let (status, created) = send(
@@ -78,21 +91,21 @@ async fn customer_and_worker_round_trip() {
     assert_eq!((status, &error["code"]), (StatusCode::NOT_FOUND, &json!("not_found")));
 
     // The worker sees it in the inbox, notes internally and yeets it.
-    let (_, inbox) = send(&app, "GET", "/api/tickets", &[WORKER], None).await;
+    let (_, inbox) = send(&app, "GET", "/api/tickets", &worker, None).await;
     assert_eq!(inbox.as_array().unwrap().len(), 1);
     let (status, _) = send(
         &app,
         "POST",
         &format!("/api/tickets/{id}/messages"),
-        &[WORKER],
+        &worker,
         Some(json!({ "body": "it's always DNS", "internal": true })),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
-    let (status, yeeted) = send(&app, "POST", &format!("/api/tickets/{id}/yeet"), &[WORKER], None).await;
+    let (status, yeeted) = send(&app, "POST", &format!("/api/tickets/{id}/yeet"), &worker, None).await;
     assert_eq!((status, &yeeted["status"]), (StatusCode::OK, &json!("resolved")));
 
-    let (_, stats) = send(&app, "GET", "/api/stats/backlog", &[WORKER], None).await;
+    let (_, stats) = send(&app, "GET", "/api/stats/backlog", &worker, None).await;
     assert_eq!(stats, json!({ "open_count": 0, "beast_mood": "asleep", "oldest_open_age_secs": null }));
 
     // The customer never sees internal notes, and replying reopens the ticket.
@@ -117,7 +130,7 @@ async fn customer_and_worker_round_trip() {
     );
 
     // The worker view does include the note, written by 山田.
-    let (_, thread) = send(&app, "GET", &format!("/api/tickets/{id}"), &[WORKER], None).await;
+    let (_, thread) = send(&app, "GET", &format!("/api/tickets/{id}"), &worker, None).await;
     let note = thread["messages"].as_array().unwrap().iter().find(|m| m["internal"] == true).unwrap();
     assert_eq!(note["author_name"], "山田");
 }
@@ -125,15 +138,16 @@ async fn customer_and_worker_round_trip() {
 #[tokio::test]
 async fn errors_share_one_shape() {
     let app = app().await;
+    let auth = login(&app).await;
 
     let (status, error) = send(&app, "GET", "/api/tickets", &[], None).await;
-    assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("missing_actor")));
+    assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("unauthenticated")));
 
     let (status, error) =
         send(&app, "POST", "/api/tickets", &[], Some(json!({ "subject": " ", "body": "x", "severity": "p4" }))).await;
     assert_eq!((status, &error["code"]), (StatusCode::UNPROCESSABLE_ENTITY, &json!("validation_failed")));
 
-    let (status, error) = send(&app, "GET", "/api/tickets/not-a-uuid", &[WORKER], None).await;
+    let (status, error) = send(&app, "GET", "/api/tickets/not-a-uuid", &[("authorization", auth.as_str())], None).await;
     assert_eq!((status, &error["code"]), (StatusCode::NOT_FOUND, &json!("not_found")));
 
     let (status, error) = send(&app, "GET", "/api/teapot", &[], None).await;
@@ -155,4 +169,66 @@ async fn admin_export_needs_the_admin_token() {
     let (status, tickets) = send(&app, "GET", "/api/admin/export", &admin, None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(tickets[0]["customer_email"], "a@example.com");
+}
+
+#[tokio::test]
+async fn worker_endpoints_need_a_login() {
+    let app = app().await;
+
+    // No session, a made-up token, or a name header alone: all refused, on every worker route.
+    let id = "01a1d8b8-eddc-7267-aed2-2057c3b4f227";
+    for (method, uri) in [
+        ("GET", "/api/tickets".to_owned()),
+        ("GET", format!("/api/tickets/{id}")),
+        ("POST", format!("/api/tickets/{id}/messages")),
+        ("PATCH", format!("/api/tickets/{id}")),
+        ("POST", format!("/api/tickets/{id}/yeet")),
+        ("GET", "/api/stats/backlog".to_owned()),
+    ] {
+        for headers in [vec![], vec![DISPLAY_NAME], vec![("authorization", "Bearer made-up"), DISPLAY_NAME]] {
+            let (status, error) = send(&app, method, &uri, &headers, Some(json!({}))).await;
+            assert_eq!(
+                (status, &error["code"]),
+                (StatusCode::UNAUTHORIZED, &json!("unauthenticated")),
+                "{method} {uri}"
+            );
+        }
+    }
+
+    // Wrong credentials.
+    for (username, password) in [("agent", "wrong"), ("nobody", PASSWORD), ("", "")] {
+        let (status, error) =
+            send(&app, "POST", "/api/auth/login", &[], Some(json!({ "username": username, "password": password })))
+                .await;
+        assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("invalid_credentials")));
+    }
+
+    // Logged in: works, and without a display name the username is used.
+    let auth = login(&app).await;
+    let session = [("authorization", auth.as_str())];
+    let (status, _) = send(&app, "GET", "/api/tickets", &session, None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Logging out ends the session.
+    let (status, _) = send(&app, "POST", "/api/auth/logout", &session, None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, error) = send(&app, "GET", "/api/tickets", &session, None).await;
+    assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("unauthenticated")));
+}
+
+#[tokio::test]
+async fn nobody_can_log_in_without_configured_credentials() {
+    let pool = db::connect_in_memory().await.expect("in-memory db");
+    let config = Config {
+        bind_addr: "127.0.0.1:0".parse().unwrap(),
+        database_url: "sqlite::memory:".into(),
+        cors_allowed_origins: vec![],
+        public_web_url: "http://localhost:5173".into(),
+        admin_token: "test-admin-token".into(),
+        worker_credentials: None,
+    };
+    let app = http::router(AppState::new(pool, config));
+    let (status, error) =
+        send(&app, "POST", "/api/auth/login", &[], Some(json!({ "username": "", "password": "" }))).await;
+    assert_eq!((status, &error["code"]), (StatusCode::UNAUTHORIZED, &json!("invalid_credentials")));
 }

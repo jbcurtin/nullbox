@@ -3,7 +3,8 @@
  *
  * - Base URL from `VITE_API_BASE_URL`, so the same bundle works behind any
  *   origin (Tauri, a CDN, a different domain). No cookies, no same-origin assumptions.
- * - Auth headers are added in `authHeaders()`: that's where a bearer token goes later.
+ * - Worker requests carry `Authorization: Bearer <token>` from `authHeaders()`.
+ *   A 401 `unauthenticated` clears the session, which sends the worker back to login.
  */
 import { getActorName } from "./actor";
 import type { BacklogStats } from "./generated/BacklogStats";
@@ -11,12 +12,15 @@ import type { CreateTicketRequest } from "./generated/CreateTicketRequest";
 import type { CreateTicketResponse } from "./generated/CreateTicketResponse";
 import type { ErrorBody } from "./generated/ErrorBody";
 import type { ErrorCode } from "./generated/ErrorCode";
+import type { LoginRequest } from "./generated/LoginRequest";
+import type { LoginResponse } from "./generated/LoginResponse";
 import type { Message } from "./generated/Message";
 import type { Ticket } from "./generated/Ticket";
 import type { TicketStatus } from "./generated/TicketStatus";
 import type { TicketThread } from "./generated/TicketThread";
 import type { UpdateTicketRequest } from "./generated/UpdateTicketRequest";
 import type { WorkerMessageRequest } from "./generated/WorkerMessageRequest";
+import { clearSession, getSession } from "./session";
 
 export const API_BASE_URL: string = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000"
@@ -35,10 +39,15 @@ export class ApiError extends Error {
   }
 }
 
-/** Worker identity. Today an untrusted name header; tomorrow `Authorization: Bearer …`. */
+/** The login session, plus the display name shown on replies. */
 function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const session = getSession();
+  if (session) headers.Authorization = `Bearer ${session.token}`;
   // Percent-encoded so non-ASCII names (e.g. 山田) survive HTTP headers.
-  return { "X-Actor-Name": encodeURIComponent(getActorName()) };
+  const name = getActorName().trim();
+  if (name) headers["X-Actor-Name"] = encodeURIComponent(name);
+  return headers;
 }
 
 function ticketTokenHeaders(token: string): Record<string, string> {
@@ -66,8 +75,11 @@ async function request<T>(
 
   if (!res.ok) {
     const error = (await res.json().catch(() => null)) as ErrorBody | null;
+    // The session expired or the server restarted: back to the login form.
+    if (error?.code === "unauthenticated") clearSession();
     throw new ApiError(error?.code ?? "internal", res.status, error?.message ?? res.statusText);
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -82,6 +94,10 @@ export const api = {
       body: { body },
       headers: ticketTokenHeaders(token),
     }),
+
+  // worker login
+  login: (body: LoginRequest) => request<LoginResponse>("POST", "/auth/login", { body }),
+  logout: () => request<void>("POST", "/auth/logout", { headers: authHeaders() }),
 
   // workers
   listTickets: (status?: TicketStatus) =>

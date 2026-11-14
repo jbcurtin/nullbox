@@ -28,6 +28,7 @@ pnpm dev
 ```
 
 <http://localhost:5173> でチケットを作成でき、<http://localhost:5173/inbox> が対応者の受信箱です。
+受信箱にはログインが必要です。先に `.env` で `WORKER_USERNAME` と `WORKER_PASSWORD`（12 文字以上）を設定してください。
 
 ### Dev Container
 
@@ -85,17 +86,22 @@ migrations/                  SQL マイグレーション。バイナリに埋�
 | POST | `/tickets/{id}/messages` | `{ body, internal? }` |
 | PATCH | `/tickets/{id}` | `{ status?, severity?, assignee_name? }`（`""` で担当を解除） |
 | POST | `/tickets/{id}/yeet` | クローズ: ステータスを `resolved`（「ぶん投げ済み」）にします |
+| POST | `/auth/login` | `{ username, password }`。`{ token, username, expires_at }` を返します |
+| POST | `/auth/logout` | `Authorization` のセッションを終了します |
 | GET | `/stats/backlog` | `{ open_count, beast_mood, oldest_open_age_secs }` |
 | GET | `/admin/export` | すべてのチケット。CEO のスプレッドシート用。ヘッダー `X-Admin-Token` が必要 |
 | GET | `/healthz` | 死活確認 |
 | GET | `/teapot` | 418。RFC 2324 の定めるとおり |
 
-対応者用のエンドポイントは**保護されていません**。`X-Actor-Name` は、クライアントが名乗ったとおりの値になります。
+対応者用のエンドポイントには、`/auth/login` で得た `Authorization: Bearer <token>` が必要です。ないと 401
+`unauthenticated` を返します。ログインは共有の1つだけ（`WORKER_USERNAME` / `WORKER_PASSWORD`）で、セッションは
+12 時間有効です。メモリに保持するので、API を再起動すると全員ログアウトします。`X-Actor-Name` は返信に表示される
+名前にすぎず、省略するとユーザー名が使われます。
 
 ## 設定
 
 API は環境変数または `.env` から読みます（`.env.example` と `crates/api/src/config.rs` を参照）:
-`BIND_ADDR`、`DATABASE_URL`、`CORS_ALLOWED_ORIGINS`、`PUBLIC_WEB_URL`、`ADMIN_TOKEN`、`RUST_LOG`。
+`BIND_ADDR`、`DATABASE_URL`、`CORS_ALLOWED_ORIGINS`、`PUBLIC_WEB_URL`、`ADMIN_TOKEN`、`WORKER_USERNAME`、`WORKER_PASSWORD`、`RUST_LOG`。
 
 Web はビルド時に読みます: `VITE_API_BASE_URL`。API のオリジンで、`/api` は付けません。未設定の場合、バンドルは
 `http://localhost:3000` を呼びます。これが正しいのは手元のマシンだけです。デプロイするときは、サイトのアドレスを
@@ -105,7 +111,7 @@ Web はビルド時に読みます: `VITE_API_BASE_URL`。API のオリジンで
 
 | 追加したいもの | ここから始める |
 |---|---|
-| ログイン: パスワード、SSO、セッション | `crates/api/src/http/extract.rs` の `Actor` エクストラクター（`AppState` を受け取ります）、`apps/web/src/api/client.ts` の `authHeaders()`。別オリジンで Cookie を使うなら、`crates/api/src/http/mod.rs` の `cors()` を参照 |
+| ログイン: ユーザーごとのアカウント、SSO | `crates/api/src/auth.rs` の `Sessions`（今は共有ログイン1つ）、`crates/api/src/http/extract.rs` の `Actor` エクストラクター（`AppState` を受け取ります）、`apps/web/src/api/client.ts` の `authHeaders()`。別オリジンで Cookie を使うなら、`crates/api/src/http/mod.rs` の `cors()` を参照 |
 | ロール / 権限 | `crates/api/src/policy.rs` の `policy::can`（今は常に `true`） |
 | 監査ログ、Webhook、メール、メトリクス | `crates/api/src/events.rs` の `EventSink`（今はログに出すだけ）。拒否したリクエストは `Actor` エクストラクターで |
 | レート制限、トレースのエクスポーター、CORS の強化 | `crates/api/src/http/mod.rs` の `middleware()` |

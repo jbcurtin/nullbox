@@ -28,6 +28,7 @@ pnpm dev
 ```
 
 Open <http://localhost:5173> to file a ticket, and <http://localhost:5173/inbox> for the worker inbox.
+The inbox needs a login: set `WORKER_USERNAME` and `WORKER_PASSWORD` (12+ characters) in `.env` first.
 
 ### Dev container
 
@@ -85,17 +86,22 @@ stable and shared with TypeScript; `message` is English and for developers only.
 | POST | `/tickets/{id}/messages` | `{ body, internal? }` |
 | PATCH | `/tickets/{id}` | `{ status?, severity?, assignee_name? }` (`""` unassigns) |
 | POST | `/tickets/{id}/yeet` | close: sets status `resolved` ("Yeeted") |
+| POST | `/auth/login` | `{ username, password }`, returns `{ token, username, expires_at }` |
+| POST | `/auth/logout` | ends the session in `Authorization` |
 | GET | `/stats/backlog` | `{ open_count, beast_mood, oldest_open_age_secs }` |
 | GET | `/admin/export` | every ticket, for the CEO's spreadsheet; header `X-Admin-Token` |
 | GET | `/healthz` | liveness |
 | GET | `/teapot` | 418, as specified by RFC 2324 |
 
-Worker endpoints are **unprotected**: `X-Actor-Name` is whatever the client says it is.
+Worker endpoints need `Authorization: Bearer <token>` from `/auth/login`; without it they answer 401
+`unauthenticated`. There is one shared login (`WORKER_USERNAME` / `WORKER_PASSWORD`), and sessions last
+12 hours, kept in memory, so restarting the API logs everyone out. `X-Actor-Name` is only the display name
+on replies; without it, the username is used.
 
 ## Configuration
 
 API, from env vars or `.env` (see `.env.example` and `crates/api/src/config.rs`):
-`BIND_ADDR`, `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `PUBLIC_WEB_URL`, `ADMIN_TOKEN`, `RUST_LOG`.
+`BIND_ADDR`, `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `PUBLIC_WEB_URL`, `ADMIN_TOKEN`, `WORKER_USERNAME`, `WORKER_PASSWORD`, `RUST_LOG`.
 
 Web, at build time: `VITE_API_BASE_URL`, the origin of the API without `/api`. Unset, the bundle calls
 `http://localhost:3000`, which is only right on your laptop. For a deployment, set it to your site's
@@ -105,7 +111,7 @@ address, or to an empty value when one web server serves both the web app and `/
 
 | Want to add | Start here |
 |---|---|
-| Login: passwords, SSO, sessions | `Actor` extractor in `crates/api/src/http/extract.rs` (it gets the `AppState`); `authHeaders()` in `apps/web/src/api/client.ts`; for cookies across origins, see `cors()` in `crates/api/src/http/mod.rs` |
+| Login: per-user accounts, SSO | `Sessions` in `crates/api/src/auth.rs` (one shared login today); `Actor` extractor in `crates/api/src/http/extract.rs` (it gets the `AppState`); `authHeaders()` in `apps/web/src/api/client.ts`; for cookies across origins, see `cors()` in `crates/api/src/http/mod.rs` |
 | Roles / permissions | `policy::can` in `crates/api/src/policy.rs` (always `true` today) |
 | Audit log, webhooks, email, metrics | `EventSink` in `crates/api/src/events.rs` (only logs today); refused requests in the `Actor` extractor |
 | Rate limiting, tracing exporters, CORS hardening | `middleware()` in `crates/api/src/http/mod.rs` |
