@@ -38,9 +38,9 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 - [x] **The secret out of git (1)** 🤖: the leaked token is in no file of the default branch, and gone from its history: the `.env` of commit `4351700` and the default in `crates/api/src/config.rs`.
   - Done 2026-11-14. `config.rs` has no default anymore: the API refuses to start without an `ADMIN_TOKEN` of at least 32 characters (the README quickstart and the dev container generate one)
   - History rewritten with `git filter-repo --invert-paths --path .env --replace-text` (token → `***REMOVED***`), then force-pushed to `main`. The two `.env` commits dropped out. Every commit ID changed, so teammates need `git fetch && git reset --hard origin/main` or a fresh clone
-- [ ] **Customer links (1)** 🧑‍⚖️: changing the ticket ID in a customer link no longer shows or answers someone else's ticket.
-  - Fixed in code 2026-11-14, not deployed yet. The bug: `ticket_for_customer` (`crates/api/src/service.rs`) accepted a token that belonged to *any* ticket, then loaded the ticket named in the link
-  - Now the token must belong to that ticket; otherwise the answer is 404. Test: `a_ticket_token_opens_only_its_own_ticket`
+- [x] **Customer links (1)** 🧑‍⚖️: changing the ticket ID in a customer link no longer shows or answers someone else's ticket.
+  - Done 2026-11-14, live. The bug: `ticket_for_customer` (`crates/api/src/service.rs`) accepted a token that belonged to *any* ticket, then loaded the ticket named in the link
+  - Now the token must belong to that ticket; otherwise the answer is 404. Test: `a_ticket_token_opens_only_its_own_ticket`. Checked on the live site: own link 200, another ticket's ID 404 for both reading and replying
 - [x] **Firewall (1)** 🤖: HTTPS answers on 443, and no port other than 22, 80 and 443 is open.
   - Done 2026-11-14. `ufw` was inactive and a `debug-console` systemd service (`python3 -m http.server 8888`) served `/opt/debug-console` to the internet
   - `ufw` now denies all incoming traffic except 22/tcp, 80/tcp, 443/tcp and 443/udp (IPv4 and IPv6), and is enabled on boot. An outside scan shows 22, 80 and 443 open and 8888 closed
@@ -51,9 +51,9 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 ## Observability (2 pts) 🤖
 
 - [ ] HOT opens a ticket with a code in its subject and its own trace ID. Within 5 minutes, telemetry showing that code or trace ID must reach HOT.
-  - Built 2026-11-14 in `crates/api/src/telemetry.rs`, not deployed yet. Traces and logs go out over OTLP (http/protobuf). Each request is a span that continues the incoming `traceparent`, and creating a ticket puts its subject on the span and in a log line
+  - Built 2026-11-14 in `crates/api/src/telemetry.rs`, live but switched off until the endpoint is set. Traces and logs go out over OTLP (http/protobuf). Each request is a span that continues the incoming `traceparent`, and creating a ticket puts its subject on the span and in a log line
   - Tested against a local fake collector: the trace and the log both carried the caller's trace ID and the subject
-  - Still to do: put the 3 `OTEL_EXPORTER_OTLP_*` values from the platform page in the server `.env` (`compose.yaml` already passes them through), then deploy
+  - Still to do: put the 3 `OTEL_EXPORTER_OTLP_*` values from the platform page in the server `.env` (`compose.yaml` already passes them through), then restart the API: `ssh team-07 'cd ~/nullbox && docker compose up -d api'`
 
 ## SEO (2 pts) 🤖
 
@@ -64,18 +64,18 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 ## Payments (3 pts) 🤖
 
 - [ ] Stripe has a paid checkout for **"Nothing to See Here"**, opened by our app, that brings the buyer back to the live site. A purchase made before pressing Check counts too.
-  - Built 2026-11-14, not deployed yet. `POST /api/checkout` (`crates/api/src/payments.rs`) creates a Checkout Session for ¥500 and the shop page at `/shop` sends the buyer to it. Stripe brings them back to `/shop/thanks`
+  - Built 2026-11-14, live but answering 503 until the key is set. `POST /api/checkout` (`crates/api/src/payments.rs`) creates a Checkout Session for ¥500 and the shop page at `/shop` sends the buyer to it. Stripe brings them back to `/shop/thanks`
   - Tested against a local fake of the Stripe API only. It has not talked to the real Stripe yet
-  - Still to do: put `STRIPE_API_KEY` (from the platform page) in the server `.env`, deploy, then buy once with the test card
+  - Still to do: put `STRIPE_API_KEY` (from the platform page) in the server `.env`, restart the API (same command as for Observability), then buy once with the test card at `/shop`
   - Test card: 4242 4242 4242 4242, 12/34, CVC 123, Japan, leave "Save my information" unticked
 
 ## AI (3 pts) 🤖 🧑‍⚖️
 
 - [ ] **MCP server (2)** 🤖: `POST /mcp` without credentials returns 401 (or 403). With a bearer token we give HOT, an MCP client (protocol 2026-07-28, or 2025-11-25 with initialize and a session) lists at least one tool. OAuth is optional.
-  - Built 2026-11-14 in `crates/api/src/http/mcp.rs`, not deployed yet. Both protocol versions work on the one endpoint. Caddy proxies `/mcp` to the API
-  - Still to do: add `MCP_TOKEN=$(openssl rand -hex 32)` to the server `.env`, deploy, and give that token to HOT
+  - Built 2026-11-14 in `crates/api/src/http/mcp.rs`, live. Checked on the live site: 401 with no token and with a made-up one; with the token, `initialize` (2025-11-25) returns a session and `tools/list` (2026-07-28) lists five tools. Caddy proxies `/mcp` to the API
+  - Still to do: give HOT the token and press Check. Read it with `ssh team-07 'grep ^MCP_TOKEN= ~/nullbox/.env'`
 - [ ] **An agent works a ticket (1)** 🧑‍⚖️: given only a ticket ID, the judge's agent answers the customer through our MCP server, and the reply shows up on the ticket.
-  - Tools: `get_ticket`, `reply_to_ticket`, `add_internal_note`, `update_ticket`, `list_tickets`. The ticket ID can be the UUID or the number. The reply is signed "AI agent"
+  - Tools: `get_ticket`, `reply_to_ticket`, `add_internal_note`, `update_ticket`, `list_tickets`. The ticket ID can be the UUID or the number. The reply is signed "AI agent". Checked on the live site: a reply sent through MCP showed up on the customer's ticket page
 
 ## Suggested order
 
