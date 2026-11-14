@@ -3,14 +3,29 @@
 #   target "web": Caddy serving the built SPA and proxying /api to the API, with automatic HTTPS
 
 # --- API build ---------------------------------------------------------------
-FROM rust:1.99.1-slim-trixie AS api-build
+# cargo-chef splits the build in two layers: the dependencies (slow, rarely change) and our
+# own crates (fast). With a layer cache, a code change recompiles only our crates, and a
+# change outside the files copied here (the web app, the docs) recompiles nothing.
+FROM rust:1.99.1-slim-trixie AS chef
 # Use the image's toolchain instead of letting rust-toolchain.toml download components.
 ENV RUSTUP_TOOLCHAIN=1.99.1 SQLX_OFFLINE=true
+RUN cargo install cargo-chef --locked --version 0.1.78
 WORKDIR /src
-COPY . .
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
-    cargo build --release -p nullbox-api \
+
+FROM chef AS api-plan
+COPY Cargo.toml Cargo.lock ./
+COPY crates crates
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS api-build
+COPY --from=api-plan /src/recipe.json recipe.json
+RUN cargo chef cook --release -p nullbox-api --recipe-path recipe.json
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo .cargo
+COPY .sqlx .sqlx
+COPY migrations migrations
+COPY crates crates
+RUN cargo build --release -p nullbox-api \
     && cp target/release/nullbox-api /nullbox-api
 
 # --- Web build ---------------------------------------------------------------
