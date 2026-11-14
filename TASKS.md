@@ -1,6 +1,6 @@
 # Level Up! tasks
 
-Osaka FastHacks #2. Live site: https://team-07.fasthacks.cloud · Score: **1 / 26**
+Osaka FastHacks #2. Live site: https://team-07.fasthacks.cloud · Score: **1 / 26** (3 / 26 once both Security checks pass)
 
 Do not put secrets in this file. The repo is public. Stripe and OTLP keys go in the server's `~/nullbox/.env`.
 Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge (comes to your table)
@@ -29,10 +29,15 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 
 ## Security (6 pts) 🤖 🧑‍⚖️
 
-- [ ] **Rotate the leaked secret (1)** 🤖: the old admin token is refused, and a new token returns an export containing HOT's ticket. Then rotate once more: the first new token must be refused too.
-  - The server already uses a random `ADMIN_TOKEN` (`ssh team-07 'cat ~/nullbox/.env'`). Enter it on the card, press Check, then change it in `.env` and run `docker compose up -d` when HOT asks you to rotate
-- [ ] **The secret out of git (1)** 🤖: the leaked token is in no file of the default branch, and gone from its history: the `.env` of commit `4351700` and the default in `crates/api/src/config.rs`.
-  - Make `ADMIN_TOKEN` required in `config.rs`, then rewrite history (`git filter-repo --replace-text`) and force-push. Do this before CI/CD is in place, so the rewrite doesn't fight the pipeline
+- [x] **Rotate the leaked secret (1)** 🤖: the old admin token is refused, and a new token returns an export containing HOT's ticket. Then rotate once more: the first new token must be refused too.
+  - Done 2026-11-14. Round 1: the server's random `ADMIN_TOKEN` (set at deploy) was entered on the card. Round 2: a new token was generated and the API restarted. The leaked token and the round-1 token both get 403; the current one gets 200
+  - To rotate again (about 10 s, no rebuild):
+    ```sh
+    ssh team-07 'cd ~/nullbox && sed -i "s/^ADMIN_TOKEN=.*/ADMIN_TOKEN=$(openssl rand -hex 32)/" .env && docker compose up -d api && grep ^ADMIN_TOKEN= .env'
+    ```
+- [x] **The secret out of git (1)** 🤖: the leaked token is in no file of the default branch, and gone from its history: the `.env` of commit `4351700` and the default in `crates/api/src/config.rs`.
+  - Done 2026-11-14. `config.rs` has no default anymore: the API refuses to start without an `ADMIN_TOKEN` of at least 32 characters (the README quickstart and the dev container generate one)
+  - History rewritten with `git filter-repo --invert-paths --path .env --replace-text` (token → `***REMOVED***`), then force-pushed to `main`. The two `.env` commits dropped out. Every commit ID changed, so teammates need `git fetch && git reset --hard origin/main` or a fresh clone
 - [ ] **Customer links (1)** 🧑‍⚖️: changing the ticket ID in a customer link no longer shows or answers someone else's ticket.
   - Check that `customer::get_ticket` / `reply` verify the token against *that* ticket ID
 - [ ] **Firewall (1)** 🤖: HTTPS answers on 443, and no port other than 22, 80 and 443 is open.
