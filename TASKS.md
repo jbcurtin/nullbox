@@ -43,7 +43,7 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 - [x] **Firewall (1)** 🤖: HTTPS answers on 443, and no port other than 22, 80 and 443 is open.
   - Done 2026-11-14. `ufw` was inactive and a `debug-console` systemd service (`python3 -m http.server 8888`) served `/opt/debug-console` to the internet
   - `ufw` now denies all incoming traffic except 22/tcp, 80/tcp, 443/tcp and 443/udp (IPv4 and IPv6), and is enabled on boot. An outside scan shows 22, 80 and 443 open and 8888 closed
-  - The debug console still runs behind the firewall. To remove it completely: `sudo systemctl disable --now debug-console`
+  - The debug console is also stopped and disabled (`sudo systemctl disable --now debug-console`), so nothing listens on 8888 anymore
 - [ ] **Audit log (2)** 🤖 then 🧑‍⚖️: HOT opens a ticket with a code in its subject and calls the worker API with a made-up token. A judge then looks for both in the audit log.
   - Start in `EventSink` (`crates/api/src/events.rs`), plus refused requests in the `Actor` extractor
 
