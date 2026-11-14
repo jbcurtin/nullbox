@@ -23,4 +23,14 @@ describe("Beast", () => {
     expect(screen.getByText("おやすみ中。起こさないで。")).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("ja");
   });
+
+  it("shows the mood in tsundere Japanese", () => {
+    render(
+      <CopyProvider locale="ja-x-tsundere">
+        <Beast mood="asleep" />
+      </CopyProvider>,
+    );
+    expect(screen.getByText("寝てるわよ。起こしたら承知しないんだから。")).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("ja-x-tsundere");
+  });
 });

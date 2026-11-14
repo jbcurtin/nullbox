@@ -8,7 +8,11 @@ import { useKonami } from "../hooks/useKonami";
 import styles from "./AppShell.module.css";
 import { EnterpriseMode } from "./EnterpriseMode";
 
-const LANGUAGE_NAMES: Record<Locale, string> = { en: "English", ja: "日本語" };
+const LANGUAGE_NAMES: Record<Locale, string> = {
+  en: "English",
+  ja: "日本語",
+  "ja-x-tsundere": "ツンデレ",
+};
 
 export function AppShell() {
   const copy = useCopy();
