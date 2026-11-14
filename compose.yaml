@@ -1,6 +1,9 @@
 # Production stack. Needs a .env next to this file with DOMAIN and ADMIN_TOKEN (see .env.deploy.example).
 services:
   api:
+    # CI builds this image and loads it on the server (.github/workflows/cicd.yml).
+    # `docker compose up -d --build` still builds it in place.
+    image: nullbox-api
     build: { context: ., target: api }
     restart: unless-stopped
     init: true
@@ -22,6 +25,7 @@ services:
       - nullbox-data:/data
 
   web:
+    image: nullbox-web
     build: { context: ., target: web }
     restart: unless-stopped
     depends_on: [api]
