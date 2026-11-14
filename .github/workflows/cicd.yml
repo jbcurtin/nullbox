@@ -10,7 +10,7 @@ name: cicd
 
 on:
   push:
-    branches: [main, cicd]
+    branches: [main]
   pull_request:
 
 permissions:

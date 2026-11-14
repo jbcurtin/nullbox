@@ -12,13 +12,14 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 ## CI/CD (4 pts) 🤖
 
 - [ ] **Automatic deployments (2)**: HOT commits a code to `apps/web/public/level-up.txt` on the default branch. Within 5 minutes, `/level-up.txt` must serve it, with no human action.
-  - GitHub Actions on push to `main`: copy the code over SSH and run `docker compose up -d --build`
+  - Built 2026-11-14 in `.github/workflows/cicd.yml`. A push to `main` runs `test` and `build` in parallel, then `deploy`: the images are built in Actions, sent to the server with `docker save | ssh docker load`, and started with `docker compose up -d --no-build`
   - Secret `DEPLOY_SSH_KEY`; variables `DEPLOY_HOST=team-07.fasthacks.cloud`, `DEPLOY_USER=deploy`
-  - Needs our own repo: `origin` is `jbcurtin/nullbox`
+  - `origin` is `jbcurtin/nullbox` and we have push access, so no fork was needed
 - [ ] **Fast builds with a cache (1)**: every Actions run for HOT's commit succeeds within 4 minutes, and the code goes live.
-  - Building Rust on the 2 vCPU server is slow. Build the images in Actions with a buildx cache (`type=gha`), push them to GHCR, and have the server only `docker compose pull && up -d`
+  - The images build in Actions with a buildx layer cache (`type=gha`), and the API image uses cargo-chef so compiled dependencies stay cached. No registry: the images go to the server over SSH
+  - Measured on a branch: 5 min with every cache empty, 51 s for a change to `apps/web/public` with warm caches. The first run on `main` is a cold one, because caches are per branch
 - [ ] **Tests run automatically (1)**: HOT pushes a failing Rust test and a failing frontend test. The pipeline must fail and keep that version off the site. After HOT removes the tests, the commit must go live within 5 minutes.
-  - `cargo test` and `pnpm test` run in a job that the deploy job `needs:`
+  - `cargo test` and `pnpm test` run in the `test` job, which the `deploy` job `needs:`
 
 ## Login (5 pts) 🤖 🧑‍⚖️
 
