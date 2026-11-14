@@ -1,9 +1,14 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import en, { type Copy } from "./en";
 import ja from "./ja";
+import tsundere from "./tsundere";
 
-/** Add a locale here (and a dictionary of type `Copy`) to support more languages. */
-export const dictionaries = { en, ja } satisfies Record<string, Copy>;
+/**
+ * Add a locale here (and a dictionary of type `Copy`) to support more languages.
+ * Keys are BCP 47 language tags: they go to `Intl` and to the `lang` attribute.
+ * "ja-x-tsundere" is Japanese with a private-use subtag, so dates still format as Japanese.
+ */
+export const dictionaries = { en, ja, "ja-x-tsundere": tsundere } satisfies Record<string, Copy>;
 export type Locale = keyof typeof dictionaries;
 
 const STORAGE_KEY = "nullbox.locale";
