@@ -19,6 +19,7 @@ Requirements: Rust (pinned in `rust-toolchain.toml`), Node 22 (`.nvmrc`), pnpm v
 ```sh
 # API on http://localhost:3000 (creates nullbox.db and runs migrations on start)
 cp .env.example .env
+echo "ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env
 cargo run -p nullbox-api
 
 # Web app on http://localhost:5173 (talks to the API cross-origin, no dev proxy)

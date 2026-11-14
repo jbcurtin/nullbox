@@ -12,7 +12,10 @@ sudo corepack enable pnpm
 rustup toolchain install
 rustup component add rust-src rust-analyzer
 
-[ -e .env ] || cp .env.example .env
+if [ ! -e .env ]; then
+  cp .env.example .env
+  echo "ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env
+fi
 [ -e apps/web/.env ] || cp apps/web/.env.example apps/web/.env
 
 pnpm install --frozen-lockfile

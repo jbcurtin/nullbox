@@ -19,6 +19,7 @@
 ```sh
 # API は http://localhost:3000（起動時に nullbox.db を作成し、マイグレーションを実行します）
 cp .env.example .env
+echo "ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env
 cargo run -p nullbox-api
 
 # Web アプリは http://localhost:5173（API とは別オリジンで通信します。開発用プロキシはありません）

@@ -39,8 +39,20 @@ impl Config {
                 .filter(|origin| !origin.is_empty())
                 .collect(),
             public_web_url: var("PUBLIC_WEB_URL", "http://localhost:5173").trim_end_matches('/').to_owned(),
-            // TODO(kenji): this default is only here so the export keeps working on the demo box. Remove before launch.
-            admin_token: var("ADMIN_TOKEN", "***REMOVED***"),
+            admin_token: admin_token()?,
         })
     }
+}
+
+/// Required, with no default: a default token would be in the source code for anyone to read.
+fn admin_token() -> Result<String, ConfigError> {
+    const MIN_LEN: usize = 32;
+    let token = std::env::var("ADMIN_TOKEN").unwrap_or_default().trim().to_owned();
+    if token.len() < MIN_LEN {
+        return Err(ConfigError {
+            name: "ADMIN_TOKEN",
+            reason: format!("must be set to at least {MIN_LEN} characters, e.g. the output of `openssl rand -hex 32`"),
+        });
+    }
+    Ok(token)
 }
