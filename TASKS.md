@@ -51,9 +51,9 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 ## Observability (2 pts) 🤖
 
 - [ ] HOT opens a ticket with a code in its subject and its own trace ID. Within 5 minutes, telemetry showing that code or trace ID must reach HOT.
-  - Built 2026-11-14 in `crates/api/src/telemetry.rs`, live but switched off until the endpoint is set. Traces and logs go out over OTLP (http/protobuf). Each request is a span that continues the incoming `traceparent`, and creating a ticket puts its subject on the span and in a log line
+  - Built 2026-11-14 in `crates/api/src/telemetry.rs`, live and exporting since 2026-11-14. Traces and logs go out over OTLP (http/protobuf). Each request is a span that continues the incoming `traceparent`, and creating a ticket puts its subject on the span and in a log line
   - Tested against a local fake collector: the trace and the log both carried the caller's trace ID and the subject
-  - Still to do: put the 3 `OTEL_EXPORTER_OTLP_*` values from the platform page in the server `.env` (`compose.yaml` already passes them through), then restart the API: `ssh team-07 'cd ~/nullbox && docker compose up -d api'`
+  - The 3 `OTEL_EXPORTER_OTLP_*` values from the platform page are in the server `.env`, and `compose.yaml` passes them through. The API logs "OpenTelemetry is on" and no export errors. Still to do: press Check
 
 ## SEO (2 pts) 🤖
 
@@ -64,9 +64,9 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 ## Payments (3 pts) 🤖
 
 - [ ] Stripe has a paid checkout for **"Nothing to See Here"**, opened by our app, that brings the buyer back to the live site. A purchase made before pressing Check counts too.
-  - Built 2026-11-14, live but answering 503 until the key is set. `POST /api/checkout` (`crates/api/src/payments.rs`) creates a Checkout Session for ¥500 and the shop page at `/shop` sends the buyer to it. Stripe brings them back to `/shop/thanks`
-  - Tested against a local fake of the Stripe API only. It has not talked to the real Stripe yet
-  - Still to do: put `STRIPE_API_KEY` (from the platform page) in the server `.env`, restart the API (same command as for Observability), then buy once with the test card at `/shop`
+  - Built 2026-11-14, live. `POST /api/checkout` (`crates/api/src/payments.rs`) finds the product named "Nothing to See Here" in the Stripe account and creates a Checkout Session for its price (a subscription, ¥100 a day), and the shop page at `/shop` sends the buyer to it. Stripe brings them back to `/shop/thanks`
+  - The first version sold its own ¥500 item and Stripe refused it: the account has Managed Payments on, which needs a product tax code. The account's own product already has one
+  - `STRIPE_API_KEY` is in the server `.env` (2026-11-14). Still to do: buy once with the test card at `/shop`, then press Check
   - Test card: 4242 4242 4242 4242, 12/34, CVC 123, Japan, leave "Save my information" unticked
 
 ## AI (3 pts) 🤖 🧑‍⚖️

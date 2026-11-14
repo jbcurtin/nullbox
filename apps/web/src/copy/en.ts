@@ -107,12 +107,13 @@ const en = {
     // The product name is the same in every language: it is what Stripe shows.
     productName: "Nothing to See Here",
     productDescription: "Exactly what it says. Ships instantly, weighs nothing, never breaks.",
-    price: "¥500",
-    buy: "Buy nothing for ¥500",
+    // Set in the Stripe account, where the product and its price live.
+    price: "¥100 a day",
+    buy: "Subscribe to nothing",
     redirecting: "Taking you to the checkout…",
     paymentHint: "You pay on Stripe's secure checkout page. We never see your card.",
     thanksTitle: "Thank you!",
-    thanksBody: "Your nothing is on its way. It has, in a sense, already arrived.",
+    thanksBody: "Your daily nothing is on its way. It has, in a sense, already arrived.",
     reference: "Order reference",
   },
 

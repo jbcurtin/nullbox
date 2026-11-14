@@ -90,7 +90,7 @@ stable and shared with TypeScript; `message` is English and for developers only.
 | POST | `/auth/login` | `{ username, password }`, returns `{ token, username, expires_at }` |
 | POST | `/auth/logout` | ends the session in `Authorization` |
 | GET | `/stats/backlog` | `{ open_count, beast_mood, oldest_open_age_secs }` |
-| POST | `/checkout` | start a Stripe Checkout for the shop's one product, returns `{ url }` |
+| POST | `/checkout` | start a Stripe Checkout for the Stripe product named "Nothing to See Here", returns `{ url }` |
 | GET | `/admin/export` | every ticket, for the CEO's spreadsheet; header `X-Admin-Token` |
 | GET | `/healthz` | liveness |
 | GET | `/teapot` | 418, as specified by RFC 2324 |
