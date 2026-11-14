@@ -9,3 +9,5 @@ target
 *.db-shm
 *.db-wal
 .devcontainer
+# macOS AppleDouble files (from tar/cp on a Mac)
+**/._*

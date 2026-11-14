@@ -1,0 +1,16 @@
+# SITE_ADDRESS is the domain (e.g. team-07.fasthacks.cloud): Caddy gets a Let's Encrypt
+# certificate for it automatically. Defaults to localhost for a local run.
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	# The SPA: unknown paths (/inbox, /t/...) fall back to index.html for the client router.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
