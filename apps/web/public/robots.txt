@@ -1,0 +1,4 @@
+# Nullbox: everything public may be crawled. The API is not content.
+User-agent: *
+Allow: /
+Disallow: /api/

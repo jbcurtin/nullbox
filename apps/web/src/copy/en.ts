@@ -11,6 +11,10 @@ const en = {
   app: {
     name: "Nullbox",
     subtitle: "Support, but make it void.",
+    /** The page title and meta description. Keep the English ones in sync with index.html. */
+    title: "Nullbox: report a problem to the support void",
+    description:
+      "Nullbox is a tiny support desk. Report a problem, get a secret link to your ticket, and follow the replies while the Backlog Beast watches the inbox.",
     nav: { submit: "Report a problem", inbox: "Worker inbox" },
     language: "Language",
     footer: "No tickets were harmed in the making of this inbox.",

@@ -1,0 +1,17 @@
+# Nullbox
+
+> Nullbox is a tiny support ticket system. Customers report a problem and get a secret link to their ticket; workers answer from a shared inbox and try to reach Inbox Zero.
+
+## Pages
+
+- [Report a problem](/): the form that opens a new ticket. No account needed.
+- [Worker inbox](/inbox): the list of tickets that still need an answer.
+
+## API
+
+- [Health check](/api/healthz): returns `{"status":"ok"}` when the API is up.
+
+## Notes
+
+- A ticket can only be read with the secret link shown once after it is created.
+- The interface is available in English and Japanese.

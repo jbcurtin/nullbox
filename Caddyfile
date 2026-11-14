@@ -7,6 +7,14 @@
 		reverse_proxy api:3000
 	}
 
+	# Machine-readable files must be real files or a 404, never the SPA's index.html:
+	# crawlers and Lighthouse would read that HTML as a broken manifest.
+	@machine path /.well-known/* /robots.txt /llms.txt /sitemap.xml
+	handle @machine {
+		root * /srv
+		file_server
+	}
+
 	# The SPA: unknown paths (/inbox, /t/...) fall back to index.html for the client router.
 	handle {
 		root * /srv

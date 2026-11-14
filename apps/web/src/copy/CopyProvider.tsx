@@ -36,7 +36,10 @@ export function CopyProvider({
   const [locale, setLocaleState] = useState<Locale>(() => forced ?? initialLocale());
 
   useEffect(() => {
+    const { title, description } = dictionaries[locale].app;
     document.documentElement.lang = locale;
+    document.title = title;
+    document.querySelector('meta[name="description"]')?.setAttribute("content", description);
   }, [locale]);
 
   const value = useMemo<CopyContextValue>(
