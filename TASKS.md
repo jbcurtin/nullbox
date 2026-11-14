@@ -23,8 +23,10 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 ## Login (5 pts) 🤖 🧑‍⚖️
 
 - [ ] **Members-only page stays closed (1)** 🤖: a customer can still read their ticket with its token. The worker API refuses requests with no login, with only `X-Actor-Name`, and with a made-up token.
-  - Start in the `Actor` extractor (`crates/api/src/http/extract.rs`) and in `authHeaders()` (`apps/web/src/api/client.ts`)
+  - Built by a teammate (commit `0e2fbbe`), live since 2026-11-14. Checked on the live site: the worker API answers 401 with no login, with only `X-Actor-Name`, and with a made-up token; after `POST /api/auth/login` it answers 200
+  - The login is one shared account: `WORKER_USERNAME` and `WORKER_PASSWORD` in the server `.env` (`ssh team-07 'grep ^WORKER_ ~/nullbox/.env'`). Still to do: press Check
 - [ ] **Username and password (2)** 🧑‍⚖️: sign up, log in, reply under your own account name, locked out again after logging out. Short passwords and leaked passwords are refused at sign-up.
+  - Not done. The shared worker login above has no sign-up and no per-person accounts
 - [ ] **Single sign-on (2)** 🧑‍⚖️: sign in through a provider, reply under that account name, locked out after logging out. The judge also reviews how sign-in is built.
 
 ## Security (6 pts) 🤖 🧑‍⚖️
@@ -58,7 +60,7 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 ## SEO (2 pts) 🤖
 
 - [ ] **Score 100 (1)**: PageSpeed Insights gives the home page 100 for SEO on mobile (99 fails).
-  - Add a title, a meta description, `lang`, `robots.txt` and descriptive link text
+  - A teammate added a title, a meta description, `robots.txt` and `llms.txt` (commit `5a1ebbf`), live since 2026-11-14. The PageSpeed score has not been measured here. Still to do: press Check
 - [ ] **Agentic Browsing 100 (1)**: PageSpeed Insights gives the home page 100 for Agentic Browsing on mobile.
 
 ## Payments (3 pts) 🤖
