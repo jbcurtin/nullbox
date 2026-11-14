@@ -1,0 +1,72 @@
+# Level Up! tasks
+
+Osaka FastHacks #2. Live site: https://team-07.fasthacks.cloud · Score: **1 / 26**
+
+Do not put secrets in this file. The repo is public. Stripe and OTLP keys go in the server's `~/nullbox/.env`.
+Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge (comes to your table)
+
+## ✅ Deploy (1 pt) 🤖
+
+- [x] `/` loads and `/api/healthz` returns `{"status":"ok"}` (Docker Compose + Caddy, see `compose.yaml`)
+
+## CI/CD (4 pts) 🤖
+
+- [ ] **Automatic deployments (2)**: HOT commits a code to `apps/web/public/level-up.txt` on the default branch. Within 5 minutes, `/level-up.txt` must serve it, with no human action.
+  - GitHub Actions on push to `main`: copy the code over SSH and run `docker compose up -d --build`
+  - Secret `DEPLOY_SSH_KEY`; variables `DEPLOY_HOST=team-07.fasthacks.cloud`, `DEPLOY_USER=deploy`
+  - Needs our own repo: `origin` is `jbcurtin/nullbox`
+- [ ] **Fast builds with a cache (1)**: every Actions run for HOT's commit succeeds within 4 minutes, and the code goes live.
+  - Building Rust on the 2 vCPU server is slow. Build the images in Actions with a buildx cache (`type=gha`), push them to GHCR, and have the server only `docker compose pull && up -d`
+- [ ] **Tests run automatically (1)**: HOT pushes a failing Rust test and a failing frontend test. The pipeline must fail and keep that version off the site. After HOT removes the tests, the commit must go live within 5 minutes.
+  - `cargo test` and `pnpm test` run in a job that the deploy job `needs:`
+
+## Login (5 pts) 🤖 🧑‍⚖️
+
+- [ ] **Members-only page stays closed (1)** 🤖: a customer can still read their ticket with its token. The worker API refuses requests with no login, with only `X-Actor-Name`, and with a made-up token.
+  - Start in the `Actor` extractor (`crates/api/src/http/extract.rs`) and in `authHeaders()` (`apps/web/src/api/client.ts`)
+- [ ] **Username and password (2)** 🧑‍⚖️: sign up, log in, reply under your own account name, locked out again after logging out. Short passwords and leaked passwords are refused at sign-up.
+- [ ] **Single sign-on (2)** 🧑‍⚖️: sign in through a provider, reply under that account name, locked out after logging out. The judge also reviews how sign-in is built.
+
+## Security (6 pts) 🤖 🧑‍⚖️
+
+- [ ] **Rotate the leaked secret (1)** 🤖: the old admin token is refused, and a new token returns an export containing HOT's ticket. Then rotate once more: the first new token must be refused too.
+  - The server already uses a random `ADMIN_TOKEN` (`ssh team-07 'cat ~/nullbox/.env'`). Enter it on the card, press Check, then change it in `.env` and run `docker compose up -d` when HOT asks you to rotate
+- [ ] **The secret out of git (1)** 🤖: the leaked token is in no file of the default branch, and gone from its history: the `.env` of commit `4351700` and the default in `crates/api/src/config.rs`.
+  - Make `ADMIN_TOKEN` required in `config.rs`, then rewrite history (`git filter-repo --replace-text`) and force-push. Do this before CI/CD is in place, so the rewrite doesn't fight the pipeline
+- [ ] **Customer links (1)** 🧑‍⚖️: changing the ticket ID in a customer link no longer shows or answers someone else's ticket.
+  - Check that `customer::get_ticket` / `reply` verify the token against *that* ticket ID
+- [ ] **Firewall (1)** 🤖: HTTPS answers on 443, and no port other than 22, 80 and 443 is open.
+  - Something is listening on **8888**. Run `sudo ufw allow 22,80,443/tcp && sudo ufw allow 443/udp && sudo ufw enable`
+- [ ] **Audit log (2)** 🤖 then 🧑‍⚖️: HOT opens a ticket with a code in its subject and calls the worker API with a made-up token. A judge then looks for both in the audit log.
+  - Start in `EventSink` (`crates/api/src/events.rs`), plus refused requests in the `Actor` extractor
+
+## Observability (2 pts) 🤖
+
+- [ ] HOT opens a ticket with a code in its subject and its own trace ID. Within 5 minutes, telemetry showing that code or trace ID must reach HOT.
+  - Add an OpenTelemetry layer in `main.rs` (OTLP over http/protobuf). The 3 `OTEL_EXPORTER_OTLP_*` values are on the platform page; put them in the server `.env` and pass them through `compose.yaml`
+  - Accept the incoming `traceparent` header, so HOT's trace ID is kept
+
+## SEO (2 pts) 🤖
+
+- [ ] **Score 100 (1)**: PageSpeed Insights gives the home page 100 for SEO on mobile (99 fails).
+  - Add a title, a meta description, `lang`, `robots.txt` and descriptive link text
+- [ ] **Agentic Browsing 100 (1)**: PageSpeed Insights gives the home page 100 for Agentic Browsing on mobile.
+
+## Payments (3 pts) 🤖
+
+- [ ] Stripe has a paid checkout for **"Nothing to See Here"**, opened by our app, that brings the buyer back to the live site. A purchase made before pressing Check counts too.
+  - Stripe Checkout Session from a new API route. Put `STRIPE_API_KEY` (from the platform page) in the server `.env`
+  - Test card: 4242 4242 4242 4242, 12/34, CVC 123, Japan, leave "Save my information" unticked
+
+## AI (3 pts) 🤖 🧑‍⚖️
+
+- [ ] **MCP server (2)** 🤖: `POST /mcp` without credentials returns 401 (or 403). With a bearer token we give HOT, an MCP client (protocol 2026-07-28, or 2025-11-25 with initialize and a session) lists at least one tool. OAuth is optional.
+  - Add a service at `/mcp` next to the `/api` nest in `router()`, with tools that call `TicketService`. Caddy must also proxy `/mcp` to the API
+- [ ] **An agent works a ticket (1)** 🧑‍⚖️: given only a ticket ID, the judge's agent answers the customer through our MCP server, and the reply shows up on the ticket.
+
+## Suggested order
+
+1. Quick wins: firewall, rotate secret, secret out of git (3 pts, under 30 min)
+2. CI/CD with tests and cache (4 pts). It makes every later deploy free
+3. SEO (2), Login: members-only (1), Observability (2)
+4. Bigger items: MCP (3), Payments (3), passwords and SSO (4), audit log (2)
