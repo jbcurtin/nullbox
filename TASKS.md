@@ -66,7 +66,7 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
 - [ ] Stripe has a paid checkout for **"Nothing to See Here"**, opened by our app, that brings the buyer back to the live site. A purchase made before pressing Check counts too.
   - Built 2026-11-14, live. `POST /api/checkout` (`crates/api/src/payments.rs`) finds the product named "Nothing to See Here" in the Stripe account and creates a Checkout Session for its price (a subscription, ¥100 a day), and the shop page at `/shop` sends the buyer to it. Stripe brings them back to `/shop/thanks`
   - The first version sold its own ¥500 item and Stripe refused it: the account has Managed Payments on, which needs a product tax code. The account's own product already has one
-  - `STRIPE_API_KEY` is in the server `.env` (2026-11-14). Still to do: buy once with the test card at `/shop`, then press Check
+  - `STRIPE_API_KEY` is in the server `.env` (2026-11-14). A test purchase went through from `/shop` on the live site and came back to `/shop/thanks` (2026-11-14). Still to do: press Check
   - Test card: 4242 4242 4242 4242, 12/34, CVC 123, Japan, leave "Save my information" unticked
 
 ## AI (3 pts) 🤖 🧑‍⚖️
