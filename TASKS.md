@@ -1,6 +1,6 @@
 # Level Up! tasks
 
-Osaka FastHacks #2. Live site: https://team-07.fasthacks.cloud · Score: **1 / 26** (3 / 26 once both Security checks pass)
+Osaka FastHacks #2. Live site: https://team-07.fasthacks.cloud · Score: **1 / 26** (4 / 26 once the three Security checks pass)
 
 Do not put secrets in this file. The repo is public. Stripe and OTLP keys go in the server's `~/nullbox/.env`.
 Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge (comes to your table)
@@ -40,8 +40,10 @@ Checked by: 🤖 HOT (automatic, when you press Check) · 🧑‍⚖️ a judge 
   - History rewritten with `git filter-repo --invert-paths --path .env --replace-text` (token → `***REMOVED***`), then force-pushed to `main`. The two `.env` commits dropped out. Every commit ID changed, so teammates need `git fetch && git reset --hard origin/main` or a fresh clone
 - [ ] **Customer links (1)** 🧑‍⚖️: changing the ticket ID in a customer link no longer shows or answers someone else's ticket.
   - Check that `customer::get_ticket` / `reply` verify the token against *that* ticket ID
-- [ ] **Firewall (1)** 🤖: HTTPS answers on 443, and no port other than 22, 80 and 443 is open.
-  - Something is listening on **8888**. Run `sudo ufw allow 22,80,443/tcp && sudo ufw allow 443/udp && sudo ufw enable`
+- [x] **Firewall (1)** 🤖: HTTPS answers on 443, and no port other than 22, 80 and 443 is open.
+  - Done 2026-11-14. `ufw` was inactive and a `debug-console` systemd service (`python3 -m http.server 8888`) served `/opt/debug-console` to the internet
+  - `ufw` now denies all incoming traffic except 22/tcp, 80/tcp, 443/tcp and 443/udp (IPv4 and IPv6), and is enabled on boot. An outside scan shows 22, 80 and 443 open and 8888 closed
+  - The debug console still runs behind the firewall. To remove it completely: `sudo systemctl disable --now debug-console`
 - [ ] **Audit log (2)** 🤖 then 🧑‍⚖️: HOT opens a ticket with a code in its subject and calls the worker API with a made-up token. A judge then looks for both in the audit log.
   - Start in `EventSink` (`crates/api/src/events.rs`), plus refused requests in the `Actor` extractor
 
